@@ -1,7 +1,7 @@
 # Dutch Football Scouting Platform (Eredivisie + Eerste Divisie)
 
 A Streamlit scouting dashboard for the two Dutch professional leagues: the
-Eredivisie (2022/23 – 2025/26) and the Eerste Divisie (2020/21 – 2025/26).
+Eredivisie (2022/23 – 2025/26) and the Eerste Divisie (2020/21 – 2026/27, the last one in progress).
 Built on Wyscout player data, possession-adjusted (PAdj) per-90 metrics
 (possession from FotMob for the Eredivisie and Sofascore for the Eerste
 Divisie), and transfer history scraped from Transfermarkt. Pick the league in
@@ -54,5 +54,8 @@ streamlit run app.py
   (Sofascore); for the Eredivisie this reproduces the FotMob season figure to
   within 0.1 points. The four reserve sides (Ajax II, PSV II, AZ II, Utrecht II)
   are part of the Eerste Divisie and are kept.
-- The 2026/27 Eerste Divisie export is not used: with only a handful of games
-  played nobody reaches 900 minutes.
+- The Eerste Divisie 2026/27 season is still being played, so the minutes bar is
+  scaled to the games each team has played (900 minutes over 38 games = 23.7
+  minutes per game). Samples are small and percentiles will move; its
+  possession is a snapshot (rerun `build_possession_eerste_divisie.py` after
+  updating the embedded 2026/27 averages, and `process_data.py`).

@@ -6,8 +6,9 @@ match). For the Eredivisie the same computation reproduces the FotMob season fig
 so the two leagues are on the same footing.
 
 - 2022/23 - 2025/26: mean of `possession` in Dutch-Football-Intelligence/data/processed/team_matches.csv
-- 2020/21 - 2021/22: collected from Sofascore in the browser (tournament 131, seasons 29187 and 36893);
-  the per-team averages are embedded below.
+- 2020/21 - 2021/22 and 2026/27: collected from Sofascore in the browser (tournament 131, seasons 29187,
+  36893 and 96187); the per-team averages are embedded below. 2026/27 is a snapshot on 2026-09-20 (6-9 games
+  per team) - re-collect it as the season goes on.
 """
 import json
 import os
@@ -30,11 +31,17 @@ SOFASCORE_TO_WYSCOUT = {
     "SC Telstar": "Telstar", "FC Emmen": "Emmen", "Roda JC Kerkrade": "Roda JC", "Almere City FC": "Almere City",
     "MVV Maastricht": "MVV", "SC Cambuur": "Cambuur", "NEC Nijmegen": "NEC", "Jong FC Utrecht": "Utrecht II",
     "Jong AZ Alkmaar": "AZ II", "Jong PSV Eindhoven": "PSV II", "Jong Ajax": "Ajax II", "VVV-Venlo": "VVV Venlo",
+    "Heracles Almelo": "Heracles",
 }
 # Wyscout labelled Jong Utrecht "Utrecht U21" in 2021/22
 EXTRA_ALIASES = {"2122": {"Utrecht U21": "Utrecht II"}}
 
-OLD_SEASONS = {  # season key -> {sofascore team: (avg possession %, matches)}
+OLD_SEASONS = {  # season key -> {sofascore team: avg possession %}
+    "2627": {"FC Dordrecht": 55.7, "Jong Ajax": 53.1, "FC Den Bosch": 49.4, "Almere City FC": 40.9, "TOP Oss": 37.4,
+             "NAC Breda": 59.8, "VVV-Venlo": 46.0, "Heracles Almelo": 55.6, "Vitesse": 49.6, "RKC Waalwijk": 51.0,
+             "FC Emmen": 54.4, "Roda JC Kerkrade": 50.0, "Helmond Sport": 42.9, "De Graafschap": 53.0,
+             "Jong PSV Eindhoven": 56.2, "FC Volendam": 52.3, "Jong AZ Alkmaar": 49.1, "FC Eindhoven": 45.6,
+             "MVV Maastricht": 53.1, "Jong FC Utrecht": 45.6},
     "2122": {"FC Den Bosch": 48.9, "Helmond Sport": 46.6, "Excelsior": 49.0, "TOP Oss": 46.0, "FC Eindhoven": 43.9,
              "FC Volendam": 54.8, "FC Dordrecht": 43.9, "Jong PSV Eindhoven": 53.4, "SC Telstar": 49.7, "FC Emmen": 56.8,
              "De Graafschap": 52.7, "Roda JC Kerkrade": 53.6, "ADO Den Haag": 52.3, "Jong Ajax": 60.8,

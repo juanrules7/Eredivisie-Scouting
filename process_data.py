@@ -1,6 +1,6 @@
 """
 Wyscout data processing pipeline for the Dutch leagues: Eredivisie (2022/23 - 2025/26)
-and Eerste Divisie (2020/21 - 2025/26).
+and Eerste Divisie (2020/21 - 2026/27, the last one still in progress).
 Replicates the logic of scouting_general.py (loading, minutes filter, team
 possession, position normalization, PAdj/OPAdj adjustment and per-pillar
 percentiles). Percentiles are computed within league + season + position.
@@ -33,6 +33,8 @@ FILES = [
     ("ATT 2324.xlsx", "23/24", "Eredivisie"),
     ("DEF_MID_GK 2223.xlsx", "22/23", "Eredivisie"),
     ("ATT 2223.xlsx", "22/23", "Eredivisie"),
+    ("EERSTE DEF_MID_GK 2627.xlsx", "26/27", "Eerste Divisie"),
+    ("EERSTE ATT 2627.xlsx", "26/27", "Eerste Divisie"),
     ("EERSTE DEF_MID_GK 2526.xlsx", "25/26", "Eerste Divisie"),
     ("EERSTE ATT 2526.xlsx", "25/26", "Eerste Divisie"),
     ("EERSTE DEF_MID_GK 2425.xlsx", "24/25", "Eerste Divisie"),
@@ -47,6 +49,10 @@ FILES = [
     ("EERSTE ATT 2021.xlsx", "20/21", "Eerste Divisie"),
 ]
 
+# Seasons still being played: the 900-minute bar is scaled to the games each team has played so far
+# (900 minutes over a 38-game season = 900/38 minutes per game played).
+PARTIAL_SEASONS = {("Eerste Divisie", "26/27"): 38}   # (league, season) -> season length in games
+
 # "25/26" -> "2526"
 def season_key(temporada):
     return temporada.replace("/", "")
@@ -55,7 +61,7 @@ def season_key(temporada):
 # 1. LOAD FILES AND FILTER BY MINUTES
 # ==========================================
 def cargar_todo():
-    frames = []
+    raw = []
     for fname, temporada, liga in FILES:
         path = os.path.join(RAW_DIR, fname)
         if not os.path.exists(path):
@@ -64,10 +70,30 @@ def cargar_todo():
         df = pd.read_excel(path)
         df["Temporada"] = temporada
         df["Liga"] = liga
+        raw.append((fname, temporada, liga, df))
+
+    # games played so far by each team of a season in progress = most games any of its players has played
+    team_games = {}
+    for _f, temporada, liga, df in raw:
+        if (liga, temporada) in PARTIAL_SEASONS:
+            team = df[PERIOD_COL].fillna(df["Equipo"]) if PERIOD_COL in df.columns else df["Equipo"]
+            for t, g in df.groupby(team)["Partidos jugados"].max().items():
+                team_games[(liga, temporada, t)] = max(g, team_games.get((liga, temporada, t), 0))
+
+    frames = []
+    for fname, temporada, liga, df in raw:
         if "Minutos jugados" in df.columns:
-            df = df[df["Minutos jugados"] >= MIN_MINUTES].copy()
+            if (liga, temporada) in PARTIAL_SEASONS:
+                season_len = PARTIAL_SEASONS[(liga, temporada)]
+                team = df[PERIOD_COL].fillna(df["Equipo"]) if PERIOD_COL in df.columns else df["Equipo"]
+                bar = team.map(lambda t: MIN_MINUTES * team_games.get((liga, temporada, t), 0) / season_len)
+                df = df[df["Minutos jugados"] >= bar].copy()
+                print(f"  Loaded {liga} {fname}: {len(df)} players (season in progress: minutes bar scaled to games played, "
+                      f"{MIN_MINUTES / season_len:.1f} min per game)")
+            else:
+                df = df[df["Minutos jugados"] >= MIN_MINUTES].copy()
+                print(f"  Loaded {liga} {fname}: {len(df)} players with >= {MIN_MINUTES} min")
         frames.append(df)
-        print(f"  Loaded {liga} {fname}: {len(df)} players with >= {MIN_MINUTES} min")
     return pd.concat(frames, ignore_index=True)
 
 

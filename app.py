@@ -18,8 +18,15 @@ MARKET_VALUES_PATH = os.path.join(BASE_DIR, "data", "market_values.json")
 LEAGUES = ["Eredivisie", "Eerste Divisie"]
 SEASONS_BY_LEAGUE = {
     "Eredivisie": ["25/26", "24/25", "23/24", "22/23"],
-    "Eerste Divisie": ["25/26", "24/25", "23/24", "22/23", "21/22", "20/21"],
+    "Eerste Divisie": ["26/27", "25/26", "24/25", "23/24", "22/23", "21/22", "20/21"],
 }
+PARTIAL_SEASONS = {("Eerste Divisie", "26/27")}   # still being played: minutes bar scaled to games played
+DEFAULT_SEASON = "25/26"                          # latest complete season
+
+
+def season_label(t):
+    return f"{t} (in progress)" if (league, t) in PARTIAL_SEASONS else t
+
 # Transfers / Transfer Deep Dive are scraped for Eredivisie arrivals only
 SEASONS_ERE = SEASONS_BY_LEAGUE["Eredivisie"]
 
@@ -45,7 +52,8 @@ def season_df(temporada: str) -> pd.DataFrame:
 
 # --- App Header ---
 st.title("⚽ Dutch Football Scouting Platform")
-st.caption("Wyscout data · Eredivisie 2022/23 – 2025/26 · Eerste Divisie 2020/21 – 2025/26 · minimum 900 minutes played")
+st.caption("Wyscout data · Eredivisie 2022/23 – 2025/26 · Eerste Divisie 2020/21 – 2026/27 · minimum 900 minutes played "
+           "(scaled to games played for the season in progress)")
 st.markdown("---")
 
 # --- METHODOLOGY SECTION ---
@@ -73,6 +81,9 @@ with st.expander("📖 READ FIRST: Methodology, Calibration & PAdj Logic", expan
     Beyond volume, these PAdj metrics are combined with **success rates** to generate comprehensive
     percentiles, so a high ranking reflects **efficiency**, not just activity. Only players with **900+
     minutes played** in a given season are included, so small samples don't distort the scale.
+    The Eerste Divisie 2026/27 season is still being played, so there the bar is scaled to the games each
+    team has played (900 minutes over 38 games = 23.7 minutes per game): the same share of the season,
+    but far fewer minutes, so percentiles there are noisier and will move as the season goes on.
     The Eerste Divisie includes the four reserve sides (shown as Ajax II, PSV II, AZ II, Utrecht II)
     because they play in that league and its possession figures are available.
     """)
@@ -90,7 +101,8 @@ if st.sidebar.button("🔄 Clear Cache & Reload Data"):
 
 league = st.sidebar.radio("League", LEAGUES)
 SEASONS = SEASONS_BY_LEAGUE[league]
-temp_choice = st.sidebar.selectbox("Season", SEASONS)
+DEFAULT_IDX = SEASONS.index(DEFAULT_SEASON)
+temp_choice = st.sidebar.selectbox("Season", SEASONS, index=DEFAULT_IDX, format_func=season_label)
 df_actual = season_df(temp_choice)
 
 posiciones = sorted(df_actual["Pos_Normalizada"].unique())
@@ -102,7 +114,10 @@ if pos_select:
     df_display = df_display[df_display["Pos_Normalizada"].isin(pos_select)]
 
 # 5. Main Dashboard Ranking
-st.subheader(f"Identified Players: {league} ({temp_choice})")
+st.subheader(f"Identified Players: {league} ({season_label(temp_choice)})")
+if (league, temp_choice) in PARTIAL_SEASONS:
+    st.info(f"{temp_choice} is still being played. Players are included from about 24 minutes per game their team has "
+            "played (the same share of the season as 900 of 38 games), so samples are small and percentiles will move.")
 
 col_score = "Final_Score"
 if col_score in df_display.columns:
@@ -141,7 +156,7 @@ with tab1:
     with st.expander("ℹ️ How to read this card"):
         st.write("Displays general info and the Top 3 metrics where this player ranks highest.")
 
-    temp_bio = st.radio("Season", SEASONS, key="bio_temp", horizontal=True)
+    temp_bio = st.radio("Season", SEASONS, index=DEFAULT_IDX, format_func=season_label, key="bio_temp", horizontal=True)
     df_bio = season_df(temp_bio)
 
     target_bio = st.selectbox("Search Player Name:", sorted(df_bio["Jugador"].unique()), key="bio_name")
@@ -182,7 +197,7 @@ with tab3:
 
     with c1:
         st.markdown("### 🟢 Primary Profile")
-        t1 = st.radio("Season", SEASONS, key="p1_t", horizontal=True)
+        t1 = st.radio("Season", SEASONS, index=DEFAULT_IDX, format_func=season_label, key="p1_t", horizontal=True)
         df_1 = season_df(t1)
         p1 = st.selectbox("Player", sorted(df_1["Jugador"].unique()), key="p1_n")
         sel_radar.append((p1, df_1, f"{p1} ({t1})"))
@@ -191,7 +206,7 @@ with tab3:
         st.markdown("### 🔴 Secondary Profile")
         activar_p2 = st.checkbox("Add second player", key="act_p2")
         if activar_p2:
-            t2 = st.radio("Season", SEASONS, key="p2_t", horizontal=True)
+            t2 = st.radio("Season", SEASONS, index=DEFAULT_IDX, format_func=season_label, key="p2_t", horizontal=True)
             df_2 = season_df(t2)
             p2 = st.selectbox("Player", sorted(df_2["Jugador"].unique()), key="p2_n")
             sel_radar.append((p2, df_2, f"{p2} ({t2})"))
@@ -200,7 +215,7 @@ with tab3:
         st.markdown("### 🔵 Comparison Profile")
         activar_p3 = st.checkbox("Add third player", key="act_p3")
         if activar_p3:
-            t3 = st.radio("Season", SEASONS, key="p3_t", horizontal=True)
+            t3 = st.radio("Season", SEASONS, index=DEFAULT_IDX, format_func=season_label, key="p3_t", horizontal=True)
             df_3 = season_df(t3)
             p3 = st.selectbox("Player", sorted(df_3["Jugador"].unique()), key="p3_n")
             sel_radar.append((p3, df_3, f"{p3} ({t3})"))
@@ -240,7 +255,7 @@ with tab4:
 
     c_temp, c_pos = st.columns([1, 1])
     with c_temp:
-        temp_search = st.radio("Season to Search:", SEASONS, key="search_temp", horizontal=True)
+        temp_search = st.radio("Season to Search:", SEASONS, index=DEFAULT_IDX, format_func=season_label, key="search_temp", horizontal=True)
         df_search = season_df(temp_search)
     with c_pos:
         pos_options_search = sorted(df_search["Pos_Normalizada"].unique())
@@ -278,7 +293,11 @@ with tab4:
     with c_edad:
         max_edad_search = st.number_input("Maximum Age", value=28, step=1)
     with c_min:
-        minutos_search = st.number_input("Minimum Minutes Played", value=900, step=100)
+        partial_search = (league, temp_search) in PARTIAL_SEASONS
+        minutos_search = st.number_input(
+            "Minimum Minutes Played", value=150 if partial_search else 900, step=50 if partial_search else 100,
+            key=f"search_min_{league}_{temp_search}",
+        )
 
     df_res = sg.aplicar_filtros_scouting_st(df_search, filtros_scouting)
 
@@ -331,13 +350,13 @@ with tab5:
     col_s1, col_s2 = st.columns([1, 2])
     with col_s1:
         st.markdown("### 🎯 Benchmark Player")
-        temp_origen = st.radio("Season of Profile:", SEASONS, key="sim_temp_org")
+        temp_origen = st.radio("Season of Profile:", SEASONS, index=DEFAULT_IDX, format_func=season_label, key="sim_temp_org")
         df_org = season_df(temp_origen)
         target_sim = st.selectbox("Select Benchmark Player:", sorted(df_org["Jugador"].unique()))
 
         st.markdown("---")
         st.markdown("### 🔎 Search Target")
-        temp_destino = st.radio("Search Twins in Season:", SEASONS, index=0, key="sim_temp_dest")
+        temp_destino = st.radio("Search Twins in Season:", SEASONS, index=DEFAULT_IDX, format_func=season_label, key="sim_temp_dest")
         df_dest = season_df(temp_destino)
         n_sim = st.slider("Number of Results:", 5, 15, 10)
 
@@ -367,7 +386,7 @@ with tab6:
     for i, col in enumerate([cz1, cz2]):
         with col:
             p = st.selectbox(f"Select Player {i + 1}", df_actual["Jugador"].unique(), key=f"zn{i}")
-            t = st.radio(f"Player {i + 1} Season", SEASONS, key=f"zt{i}", horizontal=True)
+            t = st.radio(f"Player {i + 1} Season", SEASONS, index=DEFAULT_IDX, format_func=season_label, key=f"zt{i}", horizontal=True)
             df_sel = season_df(t)
             sel_z.append((p, df_sel))
     if st.button("Calculate Z-Scores"):
@@ -383,7 +402,7 @@ with tab7:
     with st.expander("ℹ️ How to use the Market Plot"):
         st.write("Compares your player (Yellow Star) against others at their position in those specific metrics. It helps determine how good a player is in the combination of a number of metrics.")
 
-    temp_market = st.radio("Database for Market Analysis:", SEASONS, key="mkt_temp_uni", horizontal=True)
+    temp_market = st.radio("Database for Market Analysis:", SEASONS, index=DEFAULT_IDX, format_func=season_label, key="mkt_temp_uni", horizontal=True)
     df_mkt_base = season_df(temp_market)
 
     st.markdown("---")
@@ -407,7 +426,7 @@ with tab8:
 
     cd_c1, cd_c2 = st.columns([1, 2])
     with cd_c1:
-        temp_cd = st.radio("Season", SEASONS, key="cd_temp", horizontal=True)
+        temp_cd = st.radio("Season", SEASONS, index=DEFAULT_IDX, format_func=season_label, key="cd_temp", horizontal=True)
         df_cd = season_df(temp_cd)
     with cd_c2:
         target_cd = st.selectbox("Player", sorted(df_cd["Jugador"].unique()), key="cd_name")
