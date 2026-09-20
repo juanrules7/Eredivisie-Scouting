@@ -1,8 +1,9 @@
 """
-Wyscout data processing pipeline for the Eredivisie (2022/23 - 2025/26).
-Replicates the logic of scouting_general.py (loading, minutes filter, FotMob
+Wyscout data processing pipeline for the Dutch leagues: Eredivisie (2022/23 - 2025/26)
+and Eerste Divisie (2020/21 - 2025/26).
+Replicates the logic of scouting_general.py (loading, minutes filter, team
 possession, position normalization, PAdj/OPAdj adjustment and per-pillar
-percentiles) for a single-league dataset spanning several seasons.
+percentiles). Percentiles are computed within league + season + position.
 """
 import json
 import os
@@ -13,64 +14,78 @@ import pandas as pd
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 RAW_DIR = os.path.join(BASE_DIR, "data", "raw")
-POSSESSION_PATH = os.path.join(BASE_DIR, "data", "fotmob_possession.json")
+# Eredivisie possession: FotMob. Eerste Divisie possession: Sofascore (build_possession_eerste_divisie.py).
+POSSESSION_PATHS = {
+    "Eredivisie": os.path.join(BASE_DIR, "data", "fotmob_possession.json"),
+    "Eerste Divisie": os.path.join(BASE_DIR, "data", "sofascore_possession_eerste_divisie.json"),
+}
 OUTPUT_PATH = os.path.join(BASE_DIR, "data", "processed.parquet")
 
 MIN_MINUTES = 900
 PERIOD_COL = "Equipo durante el período seleccionado"
 
 FILES = [
-    ("DEF_MID_GK 2526.xlsx", "25/26"),
-    ("ATT 2526.xlsx", "25/26"),
-    ("DEF_MID_GK 2425.xlsx", "24/25"),
-    ("ATT 2425.xlsx", "24/25"),
-    ("DEF_MID_GK 2324.xlsx", "23/24"),
-    ("ATT 2324.xlsx", "23/24"),
-    ("DEF_MID_GK 2223.xlsx", "22/23"),
-    ("ATT 2223.xlsx", "22/23"),
+    ("DEF_MID_GK 2526.xlsx", "25/26", "Eredivisie"),
+    ("ATT 2526.xlsx", "25/26", "Eredivisie"),
+    ("DEF_MID_GK 2425.xlsx", "24/25", "Eredivisie"),
+    ("ATT 2425.xlsx", "24/25", "Eredivisie"),
+    ("DEF_MID_GK 2324.xlsx", "23/24", "Eredivisie"),
+    ("ATT 2324.xlsx", "23/24", "Eredivisie"),
+    ("DEF_MID_GK 2223.xlsx", "22/23", "Eredivisie"),
+    ("ATT 2223.xlsx", "22/23", "Eredivisie"),
+    ("EERSTE DEF_MID_GK 2526.xlsx", "25/26", "Eerste Divisie"),
+    ("EERSTE ATT 2526.xlsx", "25/26", "Eerste Divisie"),
+    ("EERSTE DEF_MID_GK 2425.xlsx", "24/25", "Eerste Divisie"),
+    ("EERSTE ATT 2425.xlsx", "24/25", "Eerste Divisie"),
+    ("EERSTE DEF_MID_GK 2324.xlsx", "23/24", "Eerste Divisie"),
+    ("EERSTE ATT 2324.xlsx", "23/24", "Eerste Divisie"),
+    ("EERSTE DEF_MID_GK 2223.xlsx", "22/23", "Eerste Divisie"),
+    ("EERSTE ATT 2223.xlsx", "22/23", "Eerste Divisie"),
+    ("EERSTE DEF_MID_GK 2122.xlsx", "21/22", "Eerste Divisie"),
+    ("EERSTE ATT 2122.xlsx", "21/22", "Eerste Divisie"),
+    ("EERSTE DEF_MID_GK 2021.xlsx", "20/21", "Eerste Divisie"),
+    ("EERSTE ATT 2021.xlsx", "20/21", "Eerste Divisie"),
 ]
 
-SEASON_TO_POSSESSION_KEY = {
-    "25/26": "2526",
-    "24/25": "2425",
-    "23/24": "2324",
-    "22/23": "2223",
-}
+# "25/26" -> "2526"
+def season_key(temporada):
+    return temporada.replace("/", "")
 
 # ==========================================
 # 1. LOAD FILES AND FILTER BY MINUTES
 # ==========================================
 def cargar_todo():
     frames = []
-    for fname, temporada in FILES:
+    for fname, temporada, liga in FILES:
         path = os.path.join(RAW_DIR, fname)
         if not os.path.exists(path):
             print(f"WARNING: not found {path}")
             continue
         df = pd.read_excel(path)
         df["Temporada"] = temporada
-        df["Liga"] = "Eredivisie"
+        df["Liga"] = liga
         if "Minutos jugados" in df.columns:
             df = df[df["Minutos jugados"] >= MIN_MINUTES].copy()
         frames.append(df)
-        print(f"  Loaded {fname}: {len(df)} players with >= {MIN_MINUTES} min")
+        print(f"  Loaded {liga} {fname}: {len(df)} players with >= {MIN_MINUTES} min")
     return pd.concat(frames, ignore_index=True)
 
 
 # ==========================================
-# 2. POSSESSION (FotMob) PER TEAM AND SEASON
+# 2. POSSESSION PER TEAM, LEAGUE AND SEASON
 # ==========================================
 def aplicar_posesion(df):
-    with open(POSSESSION_PATH, "r", encoding="utf-8") as f:
-        possession_by_season = json.load(f)
+    possession = {}
+    for liga, path in POSSESSION_PATHS.items():
+        with open(path, "r", encoding="utf-8") as f:
+            possession[liga] = json.load(f)
 
     df = df.copy()
     if PERIOD_COL in df.columns:
         df["Equipo"] = df[PERIOD_COL].fillna(df["Equipo"])
 
     def lookup(row):
-        key = SEASON_TO_POSSESSION_KEY.get(row["Temporada"])
-        mapa = possession_by_season.get(key, {})
+        mapa = possession.get(row["Liga"], {}).get(season_key(row["Temporada"]), {})
         return mapa.get(row["Equipo"])
 
     df["team_possession"] = df.apply(lookup, axis=1)
@@ -79,7 +94,7 @@ def aplicar_posesion(df):
     df = df.dropna(subset=["team_possession"]).copy()
     removed = before - len(df)
     print(f"Possession applied. Removed {removed} player(s) whose team wasn't in the "
-          f"possession map (reserve/B teams, loans outside the Eredivisie, etc.)")
+          f"possession map (Eredivisie reserve sides, loans to clubs outside the two leagues, etc.)")
     return df
 
 
@@ -176,10 +191,9 @@ def rankings(df):
         # (scouting_general.py) -> in practice "Crossing" only uses
         # "Precisión centros, %". Left uncorrected on purpose.
 
-        # --- RATING PER SEASON (equivalent to the original pipeline's "per League" -
-        # here the only league is the Eredivisie, so we group by season so the
-        # percentile always compares within the same competitive sample) ---
-        for temporada, df_temp in df_pos.groupby("Temporada"):
+        # --- RATING PER LEAGUE AND SEASON (equivalent to the original pipeline's "per League":
+        # the percentile always compares within the same competitive sample) ---
+        for (_liga, temporada), df_temp in df_pos.groupby(["Liga", "Temporada"]):
             df_temp = df_temp.copy()
             rating_cols = []
             for pilar, metrics in conf["pilares"].items():
@@ -203,7 +217,7 @@ def run():
     df = cargar_todo()
     print(f"Total after minutes filter: {len(df)}")
 
-    print("=== 2. Applying FotMob possession (and filtering out non-Eredivisie teams) ===")
+    print("=== 2. Applying possession (FotMob for the Eredivisie, Sofascore for the Eerste Divisie) ===")
     df = aplicar_posesion(df)
     print(f"Total after team filter: {len(df)}")
 
@@ -214,7 +228,7 @@ def run():
     df = rankings(df)
 
     print(f"Final total: {len(df)}")
-    print(df["Temporada"].value_counts())
+    print(df.groupby(["Liga", "Temporada"]).size())
     print(df["Pos_Normalizada"].value_counts())
 
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)

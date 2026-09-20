@@ -1,9 +1,11 @@
-# Eredivisie Scouting Platform
+# Dutch Football Scouting Platform (Eredivisie + Eerste Divisie)
 
-A Streamlit scouting dashboard for the Dutch Eredivisie, covering four seasons
-(2022/23 – 2025/26). Built on Wyscout player data, possession-adjusted (PAdj)
-per-90 metrics scraped from FotMob, and transfer history scraped from
-Transfermarkt.
+A Streamlit scouting dashboard for the two Dutch professional leagues: the
+Eredivisie (2022/23 – 2025/26) and the Eerste Divisie (2020/21 – 2025/26).
+Built on Wyscout player data, possession-adjusted (PAdj) per-90 metrics
+(possession from FotMob for the Eredivisie and Sofascore for the Eerste
+Divisie), and transfer history scraped from Transfermarkt. Pick the league in
+the sidebar; every scouting tab then works on that league.
 
 ## What's inside
 
@@ -12,7 +14,8 @@ Transfermarkt.
   as the author's other league dashboards, rebuilt for a single-league,
   multi-season dataset (percentiles are computed within position & season,
   not across leagues).
-- **Transfers** — every arrival at an Eredivisie club across the 4 seasons,
+- **Transfers** — every arrival at an Eredivisie club (this tab and the next
+  always cover the Eredivisie, whichever league is selected) across the 4 seasons,
   with the fee actually paid (scraped from Transfermarkt), filterable by
   season, club, position and fee type.
 - **Transfer Deep Dive** — two independent signals per transfer: market value
@@ -24,7 +27,8 @@ Transfermarkt.
 ## Data pipeline
 
 ```
-process_data.py          # Wyscout -> minutes filter, PAdj/OPAdj, per-pillar ratings
+build_possession_eerste_divisie.py  # Sofascore possession per Eerste Divisie team and season
+process_data.py          # Wyscout -> minutes filter, PAdj/OPAdj, per-pillar ratings (both leagues)
 scrape_transfers.py       # Transfermarkt club arrivals per season -> data/transfers_raw.json
 build_transfer_report.py  # matches transfers to Wyscout players
 scrape_market_values.py   # Transfermarkt market value history per player
@@ -42,5 +46,13 @@ streamlit run app.py
 - Minimum 900 minutes played per season.
 - All per-90 stats are possession-adjusted (PAdj/OPAdj) to a neutral 50%
   possession baseline.
-- Percentiles are computed within each position group and season, not
-  globally — a CB is only ever compared to other CBs that season.
+- Percentiles are computed within each league, position group and season, not
+  globally — a CB is only ever compared to other CBs of the same league and
+  season. A score in the Eerste Divisie is not comparable to one in the
+  Eredivisie.
+- Eerste Divisie possession is the average of each team's per-match possession
+  (Sofascore); for the Eredivisie this reproduces the FotMob season figure to
+  within 0.1 points. The four reserve sides (Ajax II, PSV II, AZ II, Utrecht II)
+  are part of the Eerste Divisie and are kept.
+- The 2026/27 Eerste Divisie export is not used: with only a handful of games
+  played nobody reaches 900 minutes.

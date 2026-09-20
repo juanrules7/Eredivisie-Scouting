@@ -1,0 +1,27 @@
+=== CURRENT MARKET VALUE BY POSITION (deduped players) ===
+                 n_players  avg_market_value  median_market_value
+Pos_Normalizada                                                  
+LW                      40         3556875.0            2000000.0
+AMF                     34         4910294.0            1400000.0
+DMF                     69         4078261.0            1200000.0
+LB                      47         2076596.0            1000000.0
+RB                      46         2944022.0            1000000.0
+GK                      44         2600000.0             900000.0
+RW                      44         4476136.0             900000.0
+CB                     102         3077451.0             775000.0
+CF                      63         2363492.0             750000.0
+CMF                     25         1398000.0             650000.0
+
+=== REAL TRANSFER FEES PAID BY POSITION (Eredivisie arrivals, 4 seasons) ===
+          n_transfers  avg_fee_paid  median_fee_paid
+Posicion                                            
+LW                 21     4935143.0        2600000.0
+CB                 23     4848913.0        1500000.0
+DMF                18     3701944.0        1500000.0
+AMF                15     2821667.0        1250000.0
+LB                 11     2922727.0        1200000.0
+RW                 21     2743333.0        1200000.0
+CF                 28     3042143.0        1025000.0
+GK                  9     2093333.0        1000000.0
+RB                 14     1836643.0         950000.0
+CMF                 7     1604571.0         700000.0

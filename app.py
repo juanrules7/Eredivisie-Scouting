@@ -8,18 +8,24 @@ import streamlit as st
 import scouting_ned as sg
 
 # 1. Page Configuration
-st.set_page_config(page_title="Eredivisie Scouting", layout="wide", page_icon="⚽")
+st.set_page_config(page_title="Dutch Football Scouting", layout="wide", page_icon="⚽")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(BASE_DIR, "data", "processed.parquet")
 TRANSFERS_PATH = os.path.join(BASE_DIR, "data", "transfer_report.parquet")
 MARKET_VALUES_PATH = os.path.join(BASE_DIR, "data", "market_values.json")
 
-SEASONS = ["25/26", "24/25", "23/24", "22/23"]
+LEAGUES = ["Eredivisie", "Eerste Divisie"]
+SEASONS_BY_LEAGUE = {
+    "Eredivisie": ["25/26", "24/25", "23/24", "22/23"],
+    "Eerste Divisie": ["25/26", "24/25", "23/24", "22/23", "21/22", "20/21"],
+}
+# Transfers / Transfer Deep Dive are scraped for Eredivisie arrivals only
+SEASONS_ERE = SEASONS_BY_LEAGUE["Eredivisie"]
 
 # 2. Initial Data Loading & Session State Management
 if "df_all" not in st.session_state:
-    with st.spinner("Loading Eredivisie data and calculating performance ranks..."):
+    with st.spinner("Loading data and calculating performance ranks..."):
         st.session_state.df_all = pd.read_parquet(DATA_PATH)
         st.session_state.df_transfers = (
             pd.read_parquet(TRANSFERS_PATH) if os.path.exists(TRANSFERS_PATH) else pd.DataFrame()
@@ -32,26 +38,31 @@ if "df_all" not in st.session_state:
 
 
 def season_df(temporada: str) -> pd.DataFrame:
-    return st.session_state.df_all[st.session_state.df_all["Temporada"] == temporada]
+    """Players of the league selected in the sidebar for one season."""
+    df = st.session_state.df_all
+    return df[(df["Liga"] == league) & (df["Temporada"] == temporada)]
 
 
 # --- App Header ---
-st.title("⚽ Eredivisie Scouting Platform")
-st.caption("Wyscout data · 2022/23 – 2025/26 · minimum 900 minutes played")
+st.title("⚽ Dutch Football Scouting Platform")
+st.caption("Wyscout data · Eredivisie 2022/23 – 2025/26 · Eerste Divisie 2020/21 – 2025/26 · minimum 900 minutes played")
 st.markdown("---")
 
 # --- METHODOLOGY SECTION ---
 with st.expander("📖 READ FIRST: Methodology, Calibration & PAdj Logic", expanded=True):
     st.markdown("### 📊 How Rankings Work")
     st.write("""
-    Rankings are computed as **pure within-season percentiles**. Each player is ranked against their
-    positional peers in the same Eredivisie season, ensuring that the scores reflect genuine performance
-    relative to the competition they actually faced that year.
+    Rankings are computed as **pure within-league, within-season percentiles**. Each player is ranked
+    against their positional peers in the same league and season, ensuring that the scores reflect genuine
+    performance relative to the competition they actually faced that year. A 90 in the Eerste Divisie is
+    a 90 among Eerste Divisie players, **not** equivalent to a 90 in the Eredivisie.
     """)
     st.markdown("### ⚖️ Possession Adjustment (PAdj)")
     st.write("""
     To ensure this analysis reflects true technical quality rather than team style, all data has been
-    **Possession-Adjusted (PAdj)**, using team possession % scraped from FotMob for each Eredivisie season.
+    **Possession-Adjusted (PAdj)**, using each team's average possession % for that league and season
+    (FotMob for the Eredivisie, Sofascore for the Eerste Divisie; where both were checked they agree to
+    within 0.1 points).
     Standard 'Per 90' metrics are often misleading because they fail to account for the 'opportunity' a
     player has to act — a defender on a team with 70% possession has far fewer chances to make tackles
     than one on a team with 30%. By adjusting for possession, we normalize the environment, allowing us
@@ -62,6 +73,8 @@ with st.expander("📖 READ FIRST: Methodology, Calibration & PAdj Logic", expan
     Beyond volume, these PAdj metrics are combined with **success rates** to generate comprehensive
     percentiles, so a high ranking reflects **efficiency**, not just activity. Only players with **900+
     minutes played** in a given season are included, so small samples don't distort the scale.
+    The Eerste Divisie includes the four reserve sides (shown as Ajax II, PSV II, AZ II, Utrecht II)
+    because they play in that league and its possession figures are available.
     """)
 
 st.markdown("---")
@@ -75,6 +88,8 @@ if st.sidebar.button("🔄 Clear Cache & Reload Data"):
             del st.session_state[key]
     st.rerun()
 
+league = st.sidebar.radio("League", LEAGUES)
+SEASONS = SEASONS_BY_LEAGUE[league]
 temp_choice = st.sidebar.selectbox("Season", SEASONS)
 df_actual = season_df(temp_choice)
 
@@ -87,7 +102,7 @@ if pos_select:
     df_display = df_display[df_display["Pos_Normalizada"].isin(pos_select)]
 
 # 5. Main Dashboard Ranking
-st.subheader(f"Identified Players: Eredivisie ({temp_choice})")
+st.subheader(f"Identified Players: {league} ({temp_choice})")
 
 col_score = "Final_Score"
 if col_score in df_display.columns:
@@ -102,7 +117,7 @@ if col_score in df_display.columns:
     cols_to_show = [c for c in display_cols.keys() if c in df_ranked.columns]
     df_visible = df_ranked[cols_to_show].rename(columns=display_cols)
 
-    st.dataframe(df_visible.head(20), use_container_width=True)
+    st.dataframe(df_visible.head(20), width="stretch")
 else:
     st.warning("Ranking columns not found. Please ensure data processing is complete.")
 
@@ -148,7 +163,7 @@ with tab1:
 with tab2:
     st.header("🏆 League Rankings")
     with st.expander("ℹ️ About League Ranking"):
-        st.write("This chart shows exactly where the player sits relative to every other player in Eredivisie that season, at their position.")
+        st.write("This chart shows exactly where the player sits relative to every other player in the league that season, at their position.")
 
     if target_bio:
         fig_rank = sg.plot_league_rank_st(df_bio, target_bio)
@@ -292,7 +307,7 @@ with tab4:
         st.dataframe(
             df_final_view.style.background_gradient(subset=metrics_search, cmap="YlGn")
             .format({col: "{:.1f}" for col in metrics_search}),
-            use_container_width=True,
+            width="stretch",
             height=500,
         )
 
@@ -302,7 +317,7 @@ with tab4:
             data=csv_data,
             file_name=f"scouting_report_{temp_search.replace('/', '')}.csv",
             mime="text/csv",
-            use_container_width=True,
+            width="stretch",
         )
     else:
         st.warning("No players found with these exact requirements. Try lowering the sliders.")
@@ -326,7 +341,7 @@ with tab5:
         df_dest = season_df(temp_destino)
         n_sim = st.slider("Number of Results:", 5, 15, 10)
 
-        run_sim = st.button("🚀 Find Similar Players", use_container_width=True)
+        run_sim = st.button("🚀 Find Similar Players", width="stretch")
 
     with col_s2:
         if run_sim:
@@ -356,7 +371,11 @@ with tab6:
             df_sel = season_df(t)
             sel_z.append((p, df_sel))
     if st.button("Calculate Z-Scores"):
-        st.pyplot(sg.plot_zscore_st(sel_z))
+        fig_z = sg.plot_zscore_st(sel_z)
+        if fig_z:
+            st.pyplot(fig_z)
+        else:
+            st.warning("Could not build the chart: check that each player played in the season selected next to their name.")
 
 # --- TAB 7: MARKET ---
 with tab7:
@@ -418,7 +437,7 @@ with tab8:
 
     st.markdown("---")
 
-    if st.button("🧩 Build Dashboard", key="cd_build", use_container_width=True):
+    if st.button("🧩 Build Dashboard", key="cd_build", width="stretch"):
         if not target_cd:
             st.warning("Please select a player first.")
         else:
@@ -493,7 +512,11 @@ with tab8:
                 st.markdown("### 📈 Z-Score")
                 try:
                     sel_z_cd = [(p, d) for (p, d, _lbl) in sel_cd]
-                    st.pyplot(sg.plot_zscore_st(sel_z_cd))
+                    fig_z_cd = sg.plot_zscore_st(sel_z_cd)
+                    if fig_z_cd:
+                        st.pyplot(fig_z_cd)
+                    else:
+                        st.info("Could not generate the z-score chart for this player.")
                 except Exception as e:
                     st.warning(f"Could not build z-score chart: {e}")
                 st.markdown("---")
@@ -513,6 +536,8 @@ with tab8:
 # --- TAB 9: TRANSFERS ---
 with tab9:
     st.header("🔄 Transfers")
+    if league != "Eredivisie":
+        st.info("This tab always covers arrivals at **Eredivisie** clubs, whichever league is selected in the sidebar.")
     with st.expander("ℹ️ About this list", expanded=True):
         st.write("""
         Every arrival at an Eredivisie club across the 4 seasons in this dashboard, scraped from
@@ -538,7 +563,7 @@ with tab9:
     else:
         c_t1, c_t2, c_t3, c_t4 = st.columns(4)
         with c_t1:
-            season_filter_t = st.multiselect("Season signed:", SEASONS, key="t_season")
+            season_filter_t = st.multiselect("Season signed:", SEASONS_ERE, key="t_season")
         with c_t2:
             club_filter_t = st.multiselect(
                 "Club:", sorted(rep_all["Club_destino"].unique()), key="t_club"
@@ -578,7 +603,7 @@ with tab9:
             "Fee_tipo": "Fee Type",
         }
         d_t_view = d_t[show_cols_t].sort_values("Fee_EUR", ascending=False, na_position="last").rename(columns=rename_t)
-        st.dataframe(d_t_view, use_container_width=True, height=550)
+        st.dataframe(d_t_view, width="stretch", height=550)
 
         csv_t = d_t_view.to_csv(index=False).encode("utf-8")
         st.download_button(
@@ -589,6 +614,8 @@ with tab9:
 # --- TAB 10: TRANSFER DEEP DIVE ---
 with tab10:
     st.header("🔬 Transfer Deep Dive")
+    if league != "Eredivisie":
+        st.info("This tab always covers transfers to **Eredivisie** clubs, whichever league is selected in the sidebar.")
     with st.expander("ℹ️ What this tab can and can't tell you", expanded=True):
         st.write("""
         Two independent signals, picked apart on purpose instead of blended into one score:
@@ -636,7 +663,7 @@ with tab10:
         st.subheader("📈 Market value over time")
         history = st.session_state.market_values.get(str(row_dd["player_id"]), [])
         transfer_date = None
-        if row_dd["Temporada_fichaje"] in SEASONS:
+        if row_dd["Temporada_fichaje"] in SEASONS_ERE:
             year = 2000 + int(row_dd["Temporada_fichaje"].split("/")[0])
             transfer_date = pd.Timestamp(year=year, month=7, day=1)
         fig_mv = sg.plot_market_value_trend(
@@ -657,7 +684,7 @@ with tab10:
             )
         else:
             before_row, after_row, prev_season = sg.get_transfer_before_after(
-                st.session_state.df_all, row_dd["Jugador"], row_dd["Procedencia_Wyscout"],
+                st.session_state.df_all[st.session_state.df_all["Liga"] == "Eredivisie"], row_dd["Jugador"], row_dd["Procedencia_Wyscout"],
                 row_dd["Club_destino"], row_dd["Temporada_fichaje"],
             )
             if before_row is None:

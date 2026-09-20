@@ -1,0 +1,27 @@
+=== MARKET VALUE QUARTILES BY POSITION ===
+                   Q1 Q2_median     Q3    n
+Pos_Normalizada                            
+LW               712K     2.00M  3.62M   40
+AMF              712K     1.40M  3.38M   34
+DMF              650K     1.20M  3.50M   69
+LB               450K     1.00M  2.00M   47
+RB               450K     1.00M  2.45M   46
+GK               500K      900K  3.00M   44
+RW               588K      900K  3.62M   44
+CB               450K      775K  2.33M  102
+CF               525K      750K  2.40M   63
+CMF              350K      650K  1.80M   25
+
+=== TRANSFER FEE QUARTILES BY POSITION ===
+            Q1 Q2_median     Q3   n
+Posicion                           
+LW        818K     2.60M  5.00M  21
+CB        450K     1.50M  8.15M  23
+DMF       682K     1.50M  5.62M  18
+AMF       400K     1.25M  2.25M  15
+LB        475K     1.20M  4.50M  11
+RW        500K     1.20M  3.59M  21
+CF        500K     1.02M  4.00M  28
+GK        500K     1.00M  1.50M   9
+RB        503K      950K  2.60M  14
+CMF       451K      700K  1.01M   7
