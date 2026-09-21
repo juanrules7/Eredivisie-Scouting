@@ -90,36 +90,33 @@ def plot_omni_radar_evolutivo(players_list):
     radar.draw_param_labels(ax=ax, fontsize=11, fontproperties="monospace",
                              fontweight='bold', zorder=12)
 
-    if len(labels) == 1:
-        ax.text(0.5, 1.02, labels[0], fontsize=16, color=colors[0],
-                ha='center', va='center', transform=ax.transAxes,
-                fontfamily='monospace', fontweight='bold')
-    elif len(labels) == 2:
-        ax.text(0.3, 1.02, labels[0], fontsize=14, color=colors[0],
-                ha='center', va='center', transform=ax.transAxes,
-                fontfamily='monospace', fontweight='bold')
-        ax.text(0.5, 1.02, 'vs', fontsize=14, color='black',
-                ha='center', va='center', transform=ax.transAxes,
-                fontfamily='monospace')
-        ax.text(0.7, 1.02, labels[1], fontsize=14, color=colors[1],
-                ha='center', va='center', transform=ax.transAxes,
-                fontfamily='monospace', fontweight='bold')
-    elif len(labels) >= 3:
-        ax.text(0.15, 1.02, labels[0], fontsize=11, color=colors[0],
-                ha='center', va='center', transform=ax.transAxes,
-                fontfamily='monospace', fontweight='bold')
-        ax.text(0.35, 1.02, 'vs', fontsize=11, color='black',
-                ha='center', va='center', transform=ax.transAxes,
-                fontfamily='monospace')
-        ax.text(0.5, 1.02, labels[1], fontsize=11, color=colors[1],
-                ha='center', va='center', transform=ax.transAxes,
-                fontfamily='monospace', fontweight='bold')
-        ax.text(0.65, 1.02, 'vs', fontsize=11, color='black',
-                ha='center', va='center', transform=ax.transAxes,
-                fontfamily='monospace')
-        ax.text(0.85, 1.02, labels[2], fontsize=11, color=colors[2],
-                ha='center', va='center', transform=ax.transAxes,
-                fontfamily='monospace', fontweight='bold')
+    # player names on top, with each player's position group and club underneath: the ratings are percentiles
+    # within a position group, so it matters which group each polygon was ranked in
+    n_pl = len(labels)
+    xs = {1: [0.5], 2: [0.3, 0.7]}.get(n_pl, [0.15, 0.5, 0.85])
+    name_size = {1: 16, 2: 14}.get(n_pl, 11)
+    for i in range(min(n_pl, 3)):
+        ax.text(xs[i], 1.075, labels[i], fontsize=name_size, color=colors[i], ha='center', va='center',
+                transform=ax.transAxes, fontfamily='monospace', fontweight='bold')
+        r = extracted_data[i]
+        ax.text(xs[i], 1.03, f"{r.get('Pos_Normalizada', '?')} · {r.get('Equipo', '')}", fontsize=max(name_size - 3, 8),
+                color='#444444', ha='center', va='center', transform=ax.transAxes, fontfamily='monospace')
+    if n_pl == 2:
+        ax.text(0.5, 1.075, 'vs', fontsize=14, color='black', ha='center', va='center',
+                transform=ax.transAxes, fontfamily='monospace')
+    elif n_pl >= 3:
+        for x in (0.325, 0.675):
+            ax.text(x, 1.075, 'vs', fontsize=11, color='black', ha='center', va='center',
+                    transform=ax.transAxes, fontfamily='monospace')
+
+    positions = {extracted_data[i].get('Pos_Normalizada') for i in range(n_pl)}
+    if len(positions) > 1:
+        ax.text(1.0, -0.1,
+                'Different position groups: each player is ranked\n'
+                'against peers of their OWN position, so the\n'
+                'polygons are not directly comparable.',
+                fontsize=9, ha='right', va='center', transform=ax.transAxes,
+                fontfamily='monospace', color='#c0392b', fontweight='bold')
 
     ax.text(0.0, -0.1,
             'Ratings: Based on percentiles (0-100)\nPossession-Adjusted',
