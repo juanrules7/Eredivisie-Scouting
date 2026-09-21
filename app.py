@@ -44,6 +44,19 @@ if "df_all" not in st.session_state:
             st.session_state.market_values = {}
 
 
+def render_context(rows):
+    """Small collapsed panel with the raw per-90 numbers behind the ratings. rows: [(label, row Series)]."""
+    if not rows:
+        return
+    with st.expander("🔎 Raw numbers & context", expanded=False):
+        st.dataframe(sg.raw_context_table(rows), width="stretch")
+        st.caption(
+            "Raw per-90 numbers; the possession-adjusted value used in the rating is in brackets. The adjustment multiplies attacking "
+            "numbers by 50/possession and defensive ones by 50/(100 − possession), so the same raw output is worth "
+            "less at a high-possession team. Ratings are ranked within each player's own position group."
+        )
+
+
 def season_df(temporada: str) -> pd.DataFrame:
     """Players of the league selected in the sidebar for one season."""
     df = st.session_state.df_all
@@ -238,6 +251,8 @@ with tab3:
                     file_name=f"radar_{names_slug}.png",
                     mime="image/png",
                 )
+                render_context([(lbl, df_[df_["Jugador"] == nm].iloc[0]) for nm, df_, lbl in sel_radar
+                                if nm in df_["Jugador"].values])
             else:
                 first_player = sel_radar[0][0] if sel_radar else "selected player"
                 st.warning(
@@ -506,6 +521,8 @@ with tab8:
                         _, rc, _ = st.columns([1, 5, 1])
                         with rc:
                             st.pyplot(fig_radar_cd)
+                        render_context([(lbl, df_[df_["Jugador"] == nm].iloc[0]) for nm, df_, lbl in sel_cd
+                                        if nm in df_["Jugador"].values])
                     else:
                         st.warning(
                             "Could not generate radar (position may have no rating config "
@@ -723,5 +740,9 @@ with tab10:
                         "Each pillar is its own percentile within position & season — nothing blended "
                         "into a single score, so you can see exactly which qualities moved and which didn't."
                     )
+                    render_context([
+                        (f"{before_row['Equipo']} ({before_row['Temporada']})", before_row),
+                        (f"{after_row['Equipo']} ({after_row['Temporada']})", after_row),
+                    ])
                 else:
                     st.info("Not enough shared pillars between the two seasons to compare (likely a position change).")

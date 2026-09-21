@@ -125,6 +125,50 @@ def plot_omni_radar_evolutivo(players_list):
     return fig
 
 
+# (label, raw column, adjustment used for the rating: "O" = possession-adjusted for attacking (x 50/possession),
+#  "P" = for defensive (x 50/(100-possession)), None = a rate, not adjusted)
+_CTX_OUTFIELD = [
+    ("Progressive runs", "Carreras en progresión/90", "O"), ("Dribbles", "Regates/90", "O"),
+    ("Dribble success %", "Regates realizados, %", None), ("xA", "xA/90", "O"),
+    ("Key passes", "Jugadas claves/90", None), ("Passes", "Pases/90", None),
+    ("Progressive passes", "Pases progresivos/90", "O"), ("Passes received", "Pases recibidos /90", None),
+    ("Crosses", "Centros/90", "O"), ("xG", "xG/90", "O"),
+    ("Tackles", "Entradas/90", "P"), ("Interceptions", "Interceptaciones/90", "P"),
+    ("Defensive duels", "Duelos defensivos/90", "P"), ("Defensive duel win %", "Duelos defensivos ganados, %", None),
+    ("Aerial duels", "Duelos aéreos en los 90", "P"), ("Aerial duel win %", "Duelos aéreos ganados, %", None),
+]
+_CTX_GK = [
+    ("Exits", "Salidas/90", "P"),
+    ("Passes", "Pases/90", None), ("Progressive passes", "Pases progresivos/90", "O"),
+    ("Long passes", "Pases largos/90", "O"),
+]
+
+
+def raw_context_table(rows):
+    """Small table of the raw per-90 numbers behind the ratings, for one or more player rows.
+    rows: [(column label, row Series)]. Possession-adjusted values are shown in brackets."""
+    spec = _CTX_GK if str(rows[0][1].get("Pos_Normalizada")) == "GK" else _CTX_OUTFIELD
+    out = {}
+    for label, r in rows:
+        poss = r.get("team_possession")
+        col = {
+            "Position": str(r.get("Pos_Normalizada", "")),
+            "Team": str(r.get("Equipo", "")),
+            "Minutes": f"{r['Minutos jugados']:.0f}" if pd.notna(r.get("Minutos jugados")) else "",
+            "Team possession %": f"{poss:.1f}" if pd.notna(poss) else "",
+            "Adjustment (attack / defence)": (f"×{50 / poss:.2f} / ×{50 / (100 - poss):.2f}" if pd.notna(poss) else ""),
+        }
+        for name, c, kind in spec:
+            v = r.get(c)
+            if v is None or pd.isna(v):
+                col[name] = ""
+                continue
+            adj = r.get(f"{c}_OPAdj" if kind == "O" else f"{c}_PAdj") if kind else None
+            col[name] = f"{v:.2f} ({adj:.2f})" if adj is not None and pd.notna(adj) else f"{v:.2f}"
+        out[label] = col
+    return pd.DataFrame(out)
+
+
 def aplicar_filtros_scouting_st(df_temporada, filtros):
     """Filters a season DataFrame according to a {metric_Rating: minimum} dict."""
     if df_temporada is None or df_temporada.empty:
