@@ -2,9 +2,12 @@ import io
 import json
 import os
 
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import streamlit as st
 
+import match_center as mc
 import scouting_ned as sg
 
 # 1. Page Configuration
@@ -150,7 +153,7 @@ else:
     st.warning("Ranking columns not found. Please ensure data processing is complete.")
 
 # 6. Navigation Tabs
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
     "👤 Player Profile",
     "🏆 Rankings",
     "📊 Radar Charts",
@@ -161,6 +164,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
     "🧩 Custom Dashboard",
     "🔄 Transfers",
     "🔬 Transfer Deep Dive",
+    "🎯 Match Center",
 ])
 
 # --- TAB 1: PLAYER PROFILE ---
@@ -746,3 +750,105 @@ with tab10:
                     ])
                 else:
                     st.info("Not enough shared pillars between the two seasons to compare (likely a position change).")
+
+# --- TAB 11: MATCH CENTER ---
+with tab11:
+    st.header("🎯 Match Center")
+    with st.expander("ℹ️ What this is", expanded=True):
+        st.write("""
+        Every tracked event from a real match, straight from Sofascore: passes (with start/end pitch
+        position and whether they were completed), dribbles, defensive actions (tackles, interceptions,
+        clearances, ball recoveries, blocks) and ball carries — plus shot locations, touch heatmaps,
+        match momentum and Sofascore's own player rating broken into passing / dribbling / defensive /
+        shooting components. This is a different, richer kind of data than the Wyscout season
+        percentiles the rest of this app is built on, so it lives in its own tab.
+
+        Currently covers the **2025/26** season for both leagues. Player names here come from Sofascore
+        and are not yet matched to the Wyscout names used elsewhere in the app.
+        """)
+
+    @st.cache_data
+    def load_match_center_scouting():
+        return mc.load_match_center()
+
+    try:
+        mc_matches, mc_players, mc_events, mc_shots, mc_heatmap, mc_momentum, mc_avgpos = load_match_center_scouting()
+        mc_ok = True
+    except FileNotFoundError:
+        mc_ok = False
+
+    if not mc_ok:
+        st.warning("No match-detail data found under data/processed/match_center_*.parquet.")
+    else:
+        c1, c2, c3 = st.columns([1, 1, 2])
+        mcl_league = c1.selectbox("League", sorted(mc_matches.league.unique()), key="mcl_league")
+        lgm = mc_matches[mc_matches.league == mcl_league].sort_values("date")
+        rounds = sorted(lgm["round"].unique())
+        mcl_round = c2.selectbox("Round", rounds, index=len(rounds) - 1, key="mcl_round")
+        rm = lgm[lgm["round"] == mcl_round].copy()
+        rm["label"] = rm["home"] + " " + rm["home_score"].astype(str) + " - " + rm["away_score"].astype(str) + " " + rm["away"]
+        mcl_label = c3.selectbox("Match", rm["label"].tolist(), key="mcl_match")
+        mrow = rm[rm.label == mcl_label].iloc[0]
+        mid = mrow.match_id
+
+        st.subheader(f"{mrow.home} {int(mrow.home_score)} - {int(mrow.away_score)} {mrow.away}")
+        st.caption(f"{mcl_league} · round {int(mrow['round'])} · {mrow.date:%d %b %Y}")
+
+        mp = mc_players[mc_players.match_id == mid].copy()
+        mp["team"] = np.where(mp.is_home, mrow.home, mrow.away)
+        mp["label"] = mp["player_name"] + " (" + mp["team"] + mp["substitute"].map({True: ", sub", False: ""}).fillna("") + ")"
+
+        oc1, oc2 = st.columns(2)
+        with oc1:
+            fig, ax = plt.subplots(figsize=(8, 3.2))
+            mc.plot_momentum(ax, mc_momentum[mc_momentum.match_id == mid], mrow.home, mrow.away)
+            plt.tight_layout()
+            st.pyplot(fig)
+            plt.close(fig)
+        with oc2:
+            pitch, fig, ax = mc.new_pitch(figsize=(7.5, 5))
+            mc.plot_avgpos_formation(pitch, ax, mc_avgpos[mc_avgpos.match_id == mid], mp, mrow.home, mrow.away)
+            ax.set_title("Starting XI average positions", fontsize=10, pad=10)
+            st.pyplot(fig)
+            plt.close(fig)
+
+        st.markdown("#### Player pitch maps")
+        default_p = mp.sort_values("rating", ascending=False)["label"].head(2).tolist()
+        picked = st.multiselect("Players (either team, up to 4)", mp["label"].tolist(), default=default_p,
+                                max_selections=4, key=f"mcl_players_{mid}")
+        maps = {"Heatmap": ("heatmap", None), "Shots": ("shots", None), "Passes": ("events", ["pass"]),
+                "Dribbles": ("events", ["dribble"]), "Defensive actions": ("events", mc.DEF_TYPES),
+                "Ball carries": ("events", ["carry"])}
+        pick_map = st.selectbox("Map", list(maps), key="mcl_maptype")
+        source, kinds = maps[pick_map]
+
+        if not picked:
+            st.info("Pick at least one player.")
+        else:
+            cols = st.columns(len(picked))
+            for col, lab in zip(cols, picked):
+                prow = mp[mp.label == lab].iloc[0]
+                pid = prow.player_id
+                with col:
+                    pitch, fig, ax = mc.new_pitch(figsize=(5, 3.6))
+                    if source == "heatmap":
+                        mc.plot_heatmap(pitch, ax, mc_heatmap[(mc_heatmap.match_id == mid) & (mc_heatmap.player_id == pid)])
+                    elif source == "shots":
+                        mc.plot_shotmap(pitch, ax, mc_shots[(mc_shots.match_id == mid) & (mc_shots.player_id == pid)])
+                    else:
+                        mc.plot_events(pitch, ax, mc_events[(mc_events.match_id == mid) & (mc_events.player_id == pid)], kinds, show_legend=False)
+                    ax.set_title(f"{prow.player_name}\n{prow.team} · {prow.position} · {pick_map}", fontsize=9)
+                    st.pyplot(fig)
+                    plt.close(fig)
+
+            st.markdown("##### Rating breakdown")
+            rcols = st.columns(len(picked))
+            for col, lab in zip(rcols, picked):
+                prow = mp[mp.label == lab].iloc[0]
+                with col:
+                    st.caption(f"**{prow.player_name}** — rating {prow.rating:.1f}")
+                    fig, ax = plt.subplots(figsize=(3.6, 2.2))
+                    mc.plot_rating_breakdown(ax, prow)
+                    plt.tight_layout()
+                    st.pyplot(fig)
+                    plt.close(fig)
