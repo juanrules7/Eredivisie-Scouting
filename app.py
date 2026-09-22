@@ -756,15 +756,17 @@ with tab11:
     st.header("🎯 Match Center")
     with st.expander("ℹ️ What this is", expanded=True):
         st.write("""
-        Every tracked event from a real match, straight from Sofascore: passes (with start/end pitch
-        position and whether they were completed), dribbles, defensive actions (tackles, interceptions,
-        clearances, ball recoveries, blocks) and ball carries — plus shot locations, touch heatmaps,
-        match momentum and Sofascore's own player rating broken into passing / dribbling / defensive /
-        shooting components. This is a different, richer kind of data than the Wyscout season
-        percentiles the rest of this app is built on, so it lives in its own tab.
+        Every tracked event from a real match, straight from Sofascore: passes and crosses (with
+        start/end pitch position and whether they were completed), dribbles, defensive actions
+        (tackles, interceptions, clearances, ball recoveries, blocks) and ball carries — plus shot
+        location and type (colour = result, shape = how the chance came about: open play, corner,
+        free kick, fast break...), touch heatmaps, team attack zones, match momentum, and
+        Sofascore's own player rating broken into passing / dribbling / defending / shooting
+        components. This is a different, richer kind of data than the Wyscout season percentiles
+        the rest of this app is built on, so it lives in its own tab.
 
-        Currently covers the **2025/26** season for both leagues. Player names here come from Sofascore
-        and are not yet matched to the Wyscout names used elsewhere in the app.
+        Currently covers the **2025/26** season for both leagues. Player names here come from
+        Sofascore and are not yet matched to the Wyscout names used elsewhere in the app.
         """)
 
     @st.cache_data
@@ -776,6 +778,30 @@ with tab11:
         mc_ok = True
     except FileNotFoundError:
         mc_ok = False
+
+    MAP_TYPES_S = {
+        "Heatmap": ("heatmap", None), "Shots": ("shots", None), "Passes": ("events", mc.PASS_TYPES),
+        "Dribbles": ("events", ["dribble"]), "Defensive actions": ("events", mc.DEF_TYPES),
+        "Ball carries": ("events", ["carry"]),
+    }
+    TEAM_STAT_ROWS_S = [
+        ("touches", "Touches", "{:.0f}"), ("totalPass", "Passes", "{:.0f}"),
+        ("accuratePass", "Accurate passes", "{:.0f}"), ("totalCross", "Crosses", "{:.0f}"),
+        ("keyPass", "Key passes", "{:.0f}"), ("expectedAssists", "xA", "{:.2f}"),
+        ("duelWon", "Duels won", "{:.0f}"), ("aerialWon", "Aerial duels won", "{:.0f}"),
+        ("wonContest", "Dribbles won", "{:.0f}"), ("totalTackle", "Tackles", "{:.0f}"),
+        ("interceptionWon", "Interceptions", "{:.0f}"), ("totalClearance", "Clearances", "{:.0f}"),
+        ("ballRecovery", "Ball recoveries", "{:.0f}"), ("fouls", "Fouls", "{:.0f}"),
+    ]
+    KEY_STATS_S = [
+        ("rating", "Rating", "{:.1f}"), ("totalPass", "Passes", "{:.0f}"), ("accuratePass", "Accurate passes", "{:.0f}"),
+        ("keyPass", "Key passes", "{:.0f}"), ("expectedAssists", "xA", "{:.2f}"), ("totalTackle", "Tackles", "{:.0f}"),
+        ("interceptionWon", "Interceptions", "{:.0f}"), ("duelWon", "Duels won", "{:.0f}"),
+        ("aerialWon", "Aerial duels won", "{:.0f}"), ("kilometersCovered", "Km covered", "{:.1f}"),
+    ]
+
+    def _short(name, limit=16):
+        return name if len(name) <= limit else name[:limit - 1] + "…"
 
     if not mc_ok:
         st.warning("No match-detail data found under data/processed/match_center_*.parquet.")
@@ -797,7 +823,10 @@ with tab11:
         mp = mc_players[mc_players.match_id == mid].copy()
         mp["team"] = np.where(mp.is_home, mrow.home, mrow.away)
         mp["label"] = mp["player_name"] + " (" + mp["team"] + mp["substitute"].map({True: ", sub", False: ""}).fillna("") + ")"
+        mheat = mc_heatmap[mc_heatmap.match_id == mid]
+        mevents = mc_events[mc_events.match_id == mid]
 
+        st.markdown("#### Match overview")
         oc1, oc2 = st.columns(2)
         with oc1:
             fig, ax = plt.subplots(figsize=(8, 3.2))
@@ -808,19 +837,53 @@ with tab11:
         with oc2:
             pitch, fig, ax = mc.new_pitch(figsize=(7.5, 5))
             mc.plot_avgpos_formation(pitch, ax, mc_avgpos[mc_avgpos.match_id == mid], mp, mrow.home, mrow.away)
-            ax.set_title("Starting XI average positions", fontsize=10, pad=10)
+            ax.set_title("Starting XI average positions (shirt numbers)", fontsize=10, pad=10)
             st.pyplot(fig)
             plt.close(fig)
 
+        st.markdown("##### Attack zones: where each team's play concentrated")
+        az1, az2 = st.columns(2)
+        for col, is_home, team_name in ((az1, True, mrow.home), (az2, False, mrow.away)):
+            with col:
+                pitch, fig, ax = mc.new_pitch(figsize=(6, 4.2))
+                team_ids = mp.loc[mp.is_home == is_home, "player_id"]
+                mc.plot_team_zones(pitch, ax, mheat[mheat.player_id.isin(team_ids)], title=f"{team_name}: attack zones")
+                st.pyplot(fig)
+                plt.close(fig)
+
+        st.markdown("##### Team stats: duels, passes and defending")
+        st.caption("Summed from every player's individual match stats.")
+        home_tot, away_tot = mc.team_totals(mp)
+        rows_present = [(k, lab, fmt) for k, lab, fmt in TEAM_STAT_ROWS_S if k in home_tot.index or k in away_tot.index]
+        ncols = 3
+        nrows = -(-len(rows_present) // ncols)
+        fig, axes = plt.subplots(nrows, ncols, figsize=(12, 1.15 * nrows))
+        for ax, (k, lab, fmt) in zip(np.array(axes).flat, rows_present):
+            mc.plot_team_comparison(ax, home_tot.get(k), away_tot.get(k), mrow.home, mrow.away, lab, fmt=fmt)
+        for ax in np.array(axes).flat[len(rows_present):]:
+            ax.axis("off")
+        plt.tight_layout()
+        st.pyplot(fig)
+        plt.close(fig)
+
+        st.divider()
+        st.markdown("#### Shot map")
+        sh1, sh2 = st.columns(2)
+        for col, is_home, team_name in ((sh1, True, mrow.home), (sh2, False, mrow.away)):
+            with col:
+                pitch, fig, ax = mc.new_pitch(figsize=(7, 6))
+                mc.plot_shotmap(pitch, ax, mc_shots[(mc_shots.match_id == mid) & (mc_shots.is_home == is_home)],
+                               title=f"{team_name}: shots (bubble size = xG)")
+                st.pyplot(fig)
+                plt.close(fig)
+
+        st.divider()
         st.markdown("#### Player pitch maps")
         default_p = mp.sort_values("rating", ascending=False)["label"].head(2).tolist()
         picked = st.multiselect("Players (either team, up to 4)", mp["label"].tolist(), default=default_p,
                                 max_selections=4, key=f"mcl_players_{mid}")
-        maps = {"Heatmap": ("heatmap", None), "Shots": ("shots", None), "Passes": ("events", ["pass"]),
-                "Dribbles": ("events", ["dribble"]), "Defensive actions": ("events", mc.DEF_TYPES),
-                "Ball carries": ("events", ["carry"])}
-        pick_map = st.selectbox("Map", list(maps), key="mcl_maptype")
-        source, kinds = maps[pick_map]
+        pick_map = st.selectbox("Map", list(MAP_TYPES_S), key="mcl_maptype")
+        source, kinds = MAP_TYPES_S[pick_map]
 
         if not picked:
             st.info("Pick at least one player.")
@@ -829,17 +892,24 @@ with tab11:
             for col, lab in zip(cols, picked):
                 prow = mp[mp.label == lab].iloc[0]
                 pid = prow.player_id
+                shirt = f"#{int(prow.shirt_number)}" if pd.notna(prow.shirt_number) else ""
                 with col:
+                    st.caption(f"**{prow.player_name}** {shirt} · {prow.position} · {prow.team}")
                     pitch, fig, ax = mc.new_pitch(figsize=(5, 3.6))
                     if source == "heatmap":
-                        mc.plot_heatmap(pitch, ax, mc_heatmap[(mc_heatmap.match_id == mid) & (mc_heatmap.player_id == pid)])
+                        mc.plot_heatmap(pitch, ax, mheat[mheat.player_id == pid])
                     elif source == "shots":
                         mc.plot_shotmap(pitch, ax, mc_shots[(mc_shots.match_id == mid) & (mc_shots.player_id == pid)])
                     else:
-                        mc.plot_events(pitch, ax, mc_events[(mc_events.match_id == mid) & (mc_events.player_id == pid)], kinds, show_legend=False)
-                    ax.set_title(f"{prow.player_name}\n{prow.team} · {prow.position} · {pick_map}", fontsize=9)
+                        mc.plot_events(pitch, ax, mevents[mevents.player_id == pid], kinds, show_legend=False)
                     st.pyplot(fig)
                     plt.close(fig)
+                    if pick_map == "Passes":
+                        fig, ax = plt.subplots(figsize=(4.2, 1.5))
+                        mc.plot_pass_thirds(ax, mevents[mevents.player_id == pid])
+                        plt.tight_layout()
+                        st.pyplot(fig)
+                        plt.close(fig)
 
             st.markdown("##### Rating breakdown")
             rcols = st.columns(len(picked))
@@ -852,3 +922,19 @@ with tab11:
                     plt.tight_layout()
                     st.pyplot(fig)
                     plt.close(fig)
+
+            st.markdown("##### Key numbers")
+            picked_rows = mp[mp.label.isin(picked)].set_index("label").loc[picked].reset_index()
+            colors = [mc.BLUE, mc.RED, mc.GREEN, mc.PURPLE][:len(picked_rows)]
+            usable_stats = [(k, lab) for k, lab, fmt in KEY_STATS_S if k in picked_rows.columns and not picked_rows[k].isna().all()]
+            ncols2 = 2
+            nrows2 = -(-len(usable_stats) // ncols2)
+            fig, axes = plt.subplots(nrows2, ncols2, figsize=(9, (0.5 + 0.4 * len(picked_rows)) * nrows2))
+            for ax, (k, lab) in zip(np.array(axes).flat, usable_stats):
+                rows = [(_short(r.player_name), getattr(r, k)) for r in picked_rows.itertuples()]
+                mc.plot_stat_bars(ax, rows, lab, colors)
+            for ax in np.array(axes).flat[len(usable_stats):]:
+                ax.axis("off")
+            plt.tight_layout()
+            st.pyplot(fig)
+            plt.close(fig)
