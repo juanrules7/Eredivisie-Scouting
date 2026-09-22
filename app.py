@@ -164,7 +164,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
     "🧩 Custom Dashboard",
     "🔄 Transfers",
     "🔬 Transfer Deep Dive",
-    "🎯 Match Center",
+    "🛰️ Sofascore Event Data",
 ])
 
 # --- TAB 1: PLAYER PROFILE ---
@@ -751,22 +751,21 @@ with tab10:
                 else:
                     st.info("Not enough shared pillars between the two seasons to compare (likely a position change).")
 
-# --- TAB 11: MATCH CENTER ---
+# --- TAB 11: SOFASCORE EVENT DATA ---
 with tab11:
-    st.header("🎯 Match Center")
+    st.header("🛰️ Sofascore Event Data")
     with st.expander("ℹ️ What this is", expanded=True):
         st.write("""
-        Every tracked event from a real match, straight from Sofascore: passes and crosses (with
-        start/end pitch position and whether they were completed), dribbles, defensive actions
-        (tackles, interceptions, clearances, ball recoveries, blocks) and ball carries — plus shot
-        location and type (colour = result, shape = how the chance came about: open play, corner,
-        free kick, fast break...), touch heatmaps, team attack zones, match momentum, and
-        Sofascore's own player rating broken into passing / dribbling / defending / shooting
-        components. This is a different, richer kind of data than the Wyscout season percentiles
-        the rest of this app is built on, so it lives in its own tab.
+        Every tracked event Sofascore records for a player, pooled across **every match they played**
+        in a season: every pass and cross (start/end position, completed or not), every dribble,
+        every defensive action (tackle, interception, clearance, recovery, block), every ball carry,
+        every shot, and every touch — not season averages standing in for the data, the actual events
+        themselves, drawn on the pitch. Also Sofascore's own match rating, split into passing /
+        dribbling / defending / shooting, match by match.
 
-        Currently covers the **2025/26** season for both leagues. Player names here come from
-        Sofascore and are not yet matched to the Wyscout names used elsewhere in the app.
+        A different, richer kind of data than the Wyscout season percentiles the rest of this app is
+        built on, so it lives in its own tab. Currently covers **2025/26** for both leagues. Player
+        names here come from Sofascore and are not yet matched to the Wyscout names used elsewhere.
         """)
 
     @st.cache_data
@@ -784,157 +783,112 @@ with tab11:
         "Dribbles": ("events", ["dribble"]), "Defensive actions": ("events", mc.DEF_TYPES),
         "Ball carries": ("events", ["carry"]),
     }
-    TEAM_STAT_ROWS_S = [
-        ("touches", "Touches", "{:.0f}"), ("totalPass", "Passes", "{:.0f}"),
-        ("accuratePass", "Accurate passes", "{:.0f}"), ("totalCross", "Crosses", "{:.0f}"),
-        ("keyPass", "Key passes", "{:.0f}"), ("expectedAssists", "xA", "{:.2f}"),
-        ("duelWon", "Duels won", "{:.0f}"), ("aerialWon", "Aerial duels won", "{:.0f}"),
-        ("wonContest", "Dribbles won", "{:.0f}"), ("totalTackle", "Tackles", "{:.0f}"),
-        ("interceptionWon", "Interceptions", "{:.0f}"), ("totalClearance", "Clearances", "{:.0f}"),
-        ("ballRecovery", "Ball recoveries", "{:.0f}"), ("fouls", "Fouls", "{:.0f}"),
-    ]
-    KEY_STATS_S = [
-        ("rating", "Rating", "{:.1f}"), ("totalPass", "Passes", "{:.0f}"), ("accuratePass", "Accurate passes", "{:.0f}"),
-        ("keyPass", "Key passes", "{:.0f}"), ("expectedAssists", "xA", "{:.2f}"), ("totalTackle", "Tackles", "{:.0f}"),
-        ("interceptionWon", "Interceptions", "{:.0f}"), ("duelWon", "Duels won", "{:.0f}"),
-        ("aerialWon", "Aerial duels won", "{:.0f}"), ("kilometersCovered", "Km covered", "{:.1f}"),
-    ]
-
-    def _short(name, limit=16):
-        return name if len(name) <= limit else name[:limit - 1] + "…"
 
     if not mc_ok:
-        st.warning("No match-detail data found under data/processed/match_center_*.parquet.")
+        st.warning("No event data found under data/processed/match_center_*.parquet.")
     else:
-        c1, c2, c3 = st.columns([1, 1, 2])
-        mcl_league = c1.selectbox("League", sorted(mc_matches.league.unique()), key="mcl_league")
-        lgm = mc_matches[mc_matches.league == mcl_league].sort_values("date")
-        rounds = sorted(lgm["round"].unique())
-        mcl_round = c2.selectbox("Round", rounds, index=len(rounds) - 1, key="mcl_round")
-        rm = lgm[lgm["round"] == mcl_round].copy()
-        rm["label"] = rm["home"] + " " + rm["home_score"].astype(str) + " - " + rm["away_score"].astype(str) + " " + rm["away"]
-        mcl_label = c3.selectbox("Match", rm["label"].tolist(), key="mcl_match")
-        mrow = rm[rm.label == mcl_label].iloc[0]
-        mid = mrow.match_id
+        ec1, ec2 = st.columns(2)
+        ev_league = ec1.selectbox("League", sorted(mc_matches.league.unique()), key="ev_league")
+        ev_season = ec2.selectbox("Season", sorted(mc_matches[mc_matches.league == ev_league].season.unique(), reverse=True), key="ev_season")
 
-        st.subheader(f"{mrow.home} {int(mrow.home_score)} - {int(mrow.away_score)} {mrow.away}")
-        st.caption(f"{mcl_league} · round {int(mrow['round'])} · {mrow.date:%d %b %Y}")
+        season_players = mc.player_season_totals(mc_players, mc_matches, ev_league, ev_season)
+        season_players = season_players.sort_values("minutes", ascending=False)
+        season_players["label"] = season_players["player_name"] + " (" + season_players["team"] + ", " + season_players["position"] + ")"
 
-        mp = mc_players[mc_players.match_id == mid].copy()
-        mp["team"] = np.where(mp.is_home, mrow.home, mrow.away)
-        mp["label"] = mp["player_name"] + " (" + mp["team"] + mp["substitute"].map({True: ", sub", False: ""}).fillna("") + ")"
-        mheat = mc_heatmap[mc_heatmap.match_id == mid]
-        mevents = mc_events[mc_events.match_id == mid]
+        ev_player_label = st.selectbox("Player", season_players["label"].tolist(), key="ev_player")
+        prow = season_players[season_players.label == ev_player_label].iloc[0]
+        pid = int(prow.player_id)
 
-        st.markdown("#### Match overview")
-        oc1, oc2 = st.columns(2)
-        with oc1:
-            fig, ax = plt.subplots(figsize=(8, 3.2))
-            mc.plot_momentum(ax, mc_momentum[mc_momentum.match_id == mid], mrow.home, mrow.away)
+        st.subheader(f"{prow.player_name} — {prow.team}")
+        st.caption(f"{ev_league} · {ev_season} · {prow.position} · {int(prow.games)} games · {int(prow.minutes)} minutes · "
+                   f"avg rating {prow.avg_rating:.1f}")
+
+        # pooled rows: every event/shot/heatmap point for this player, across every match in the season
+        league_match_ids = mc_matches.loc[(mc_matches.league == ev_league) & (mc_matches.season == ev_season), "match_id"]
+        p_events = mc_events[(mc_events.player_id == pid) & (mc_events.match_id.isin(league_match_ids))]
+        p_shots = mc_shots[(mc_shots.player_id == pid) & (mc_shots.match_id.isin(league_match_ids))]
+        p_heat = mc_heatmap[(mc_heatmap.player_id == pid) & (mc_heatmap.match_id.isin(league_match_ids))]
+        p_players_rows = mc_players[(mc_players.player_id == pid) & (mc_players.match_id.isin(league_match_ids))].merge(
+            mc_matches[["match_id", "date", "home", "away"]], on="match_id", how="left").sort_values("date")
+
+        st.markdown("#### Season totals")
+        stat_defs = [
+            ("totalPass", "Passes"), ("accuratePass", "Accurate passes"), ("totalCross", "Crosses"),
+            ("keyPass", "Key passes"), ("expectedAssists", "xA"), ("totalTackle", "Tackles"),
+            ("interceptionWon", "Interceptions"), ("totalClearance", "Clearances"), ("ballRecovery", "Ball recoveries"),
+            ("totalContest", "Dribbles attempted"), ("wonContest", "Dribbles won"), ("ballCarriesCount", "Ball carries"),
+            ("duelWon", "Duels won"), ("aerialWon", "Aerial duels won"), ("totalShots", "Shots"), ("goals", "Goals"),
+        ]
+        metric_cols = st.columns(4)
+        for i, (k, lab) in enumerate(stat_defs):
+            if k in prow.index and pd.notna(prow[k]):
+                with metric_cols[i % 4]:
+                    p90 = prow.get(f"{k}_p90")
+                    st.metric(lab, f"{prow[k]:.0f}", help=f"{p90:.2f} per 90" if pd.notna(p90) else None)
+
+        st.markdown("##### Physical: tracking (GPS) data")
+        st.caption("Same source as everything else on this tab - Sofascore's per-match player tracking, summed "
+                   "(distances) or maxed (top speed) across the season, then compared against every other player "
+                   f"of the same position ({prow.position}) in {ev_league} {ev_season}.")
+        phys_defs = [("kilometersCovered", "Km covered", "{:.1f}"), ("numberOfSprints", "Sprints", "{:.0f}"),
+                    ("metersCoveredHighSpeedRunningKm", "High-speed running (km)", "{:.2f}"),
+                    ("metersCoveredSprintingKm", "Sprint distance (km)", "{:.2f}"),
+                    ("metersCoveredRunningKm", "Running distance (km)", "{:.2f}")]
+        peers = season_players[season_players.position == prow.position]
+        pc = st.columns(5)
+        for i, (k, lab, fmt) in enumerate(phys_defs):
+            p90c = f"{k}_p90"
+            if p90c not in prow.index or pd.isna(prow[p90c]):
+                continue
+            with pc[i]:
+                st.metric(lab + "/90", fmt.format(prow[p90c]))
+                if p90c in peers.columns and peers[p90c].notna().sum() > 2:
+                    pct = (peers[p90c] < prow[p90c]).mean() * 100
+                    st.caption(f"{pct:.0f}th percentile among {prow.position}s")
+        if pd.notna(prow.get("top_speed_max")):
+            st.metric("Top speed this season", f"{prow.top_speed_max:.1f} km/h",
+                      help=f"Best single-match top speed out of {int(prow.games)} games")
+
+        st.markdown("##### Rating per match")
+        if len(p_players_rows) and p_players_rows.rating.notna().any():
+            fig, ax = plt.subplots(figsize=(10, 2.6))
+            opp = np.where(p_players_rows.is_home, p_players_rows.away, p_players_rows.home)
+            ax.bar(range(len(p_players_rows)), p_players_rows.rating, color=[mc.GREEN if r >= 7 else (mc.ORANGE if r >= 6 else mc.RED) for r in p_players_rows.rating])
+            ax.axhline(prow.avg_rating, color="black", lw=0.9, ls="--", label=f"Average {prow.avg_rating:.1f}")
+            ax.set_xticks(range(len(p_players_rows)))
+            ax.set_xticklabels(opp, rotation=60, ha="right", fontsize=6.5)
+            ax.set_ylabel("Rating", fontsize=8.5)
+            ax.legend(fontsize=8, frameon=False)
             plt.tight_layout()
             st.pyplot(fig)
             plt.close(fig)
-        with oc2:
-            pitch, fig, ax = mc.new_pitch(figsize=(7.5, 5))
-            mc.plot_avgpos_formation(pitch, ax, mc_avgpos[mc_avgpos.match_id == mid], mp, mrow.home, mrow.away)
-            ax.set_title("Starting XI average positions (shirt numbers)", fontsize=10, pad=10)
+
+        st.divider()
+        st.markdown("#### Pitch maps: every event this season, pooled across every match")
+        map_pick = st.selectbox("Map", list(MAP_TYPES_S), key="ev_maptype")
+        source, kinds = MAP_TYPES_S[map_pick]
+        pitch, fig, ax = mc.new_pitch(figsize=(9, 6.2))
+        if source == "heatmap":
+            mc.plot_heatmap(pitch, ax, p_heat, title=f"{prow.player_name}: {int(len(p_heat))} touches this season")
+        elif source == "shots":
+            mc.plot_shotmap(pitch, ax, p_shots, title=f"{prow.player_name}: {len(p_shots)} shots this season")
+        else:
+            mc.plot_events(pitch, ax, p_events, kinds, title=f"{prow.player_name}: {map_pick.lower()} this season")
+        st.pyplot(fig)
+        plt.close(fig)
+        if map_pick == "Passes":
+            fig, ax = plt.subplots(figsize=(6, 2))
+            mc.plot_pass_thirds(ax, p_events)
+            plt.tight_layout()
             st.pyplot(fig)
             plt.close(fig)
 
-        st.markdown("##### Attack zones: where each team's play concentrated")
-        az1, az2 = st.columns(2)
-        for col, is_home, team_name in ((az1, True, mrow.home), (az2, False, mrow.away)):
-            with col:
-                pitch, fig, ax = mc.new_pitch(figsize=(6, 4.2))
-                team_ids = mp.loc[mp.is_home == is_home, "player_id"]
-                mc.plot_team_zones(pitch, ax, mheat[mheat.player_id.isin(team_ids)], title=f"{team_name}: attack zones")
-                st.pyplot(fig)
-                plt.close(fig)
-
-        st.markdown("##### Team stats: duels, passes and defending")
-        st.caption("Summed from every player's individual match stats.")
-        home_tot, away_tot = mc.team_totals(mp)
-        rows_present = [(k, lab, fmt) for k, lab, fmt in TEAM_STAT_ROWS_S if k in home_tot.index or k in away_tot.index]
-        ncols = 3
-        nrows = -(-len(rows_present) // ncols)
-        fig, axes = plt.subplots(nrows, ncols, figsize=(12, 1.15 * nrows))
-        for ax, (k, lab, fmt) in zip(np.array(axes).flat, rows_present):
-            mc.plot_team_comparison(ax, home_tot.get(k), away_tot.get(k), mrow.home, mrow.away, lab, fmt=fmt)
-        for ax in np.array(axes).flat[len(rows_present):]:
-            ax.axis("off")
+        st.divider()
+        st.markdown("#### Rating breakdown (season average of each match's breakdown)")
+        avg_row = p_players_rows[["passValueNormalized", "dribbleValueNormalized", "defensiveValueNormalized",
+                                  "shotValueNormalized", "goalkeeperValueNormalized"]].mean()
+        fig, ax = plt.subplots(figsize=(5, 2.6))
+        mc.plot_rating_breakdown(ax, avg_row)
         plt.tight_layout()
         st.pyplot(fig)
         plt.close(fig)
-
-        st.divider()
-        st.markdown("#### Shot map")
-        sh1, sh2 = st.columns(2)
-        for col, is_home, team_name in ((sh1, True, mrow.home), (sh2, False, mrow.away)):
-            with col:
-                pitch, fig, ax = mc.new_pitch(figsize=(7, 6))
-                mc.plot_shotmap(pitch, ax, mc_shots[(mc_shots.match_id == mid) & (mc_shots.is_home == is_home)],
-                               title=f"{team_name}: shots (bubble size = xG)")
-                st.pyplot(fig)
-                plt.close(fig)
-
-        st.divider()
-        st.markdown("#### Player pitch maps")
-        default_p = mp.sort_values("rating", ascending=False)["label"].head(2).tolist()
-        picked = st.multiselect("Players (either team, up to 4)", mp["label"].tolist(), default=default_p,
-                                max_selections=4, key=f"mcl_players_{mid}")
-        pick_map = st.selectbox("Map", list(MAP_TYPES_S), key="mcl_maptype")
-        source, kinds = MAP_TYPES_S[pick_map]
-
-        if not picked:
-            st.info("Pick at least one player.")
-        else:
-            cols = st.columns(len(picked))
-            for col, lab in zip(cols, picked):
-                prow = mp[mp.label == lab].iloc[0]
-                pid = prow.player_id
-                shirt = f"#{int(prow.shirt_number)}" if pd.notna(prow.shirt_number) else ""
-                with col:
-                    st.caption(f"**{prow.player_name}** {shirt} · {prow.position} · {prow.team}")
-                    pitch, fig, ax = mc.new_pitch(figsize=(5, 3.6))
-                    if source == "heatmap":
-                        mc.plot_heatmap(pitch, ax, mheat[mheat.player_id == pid])
-                    elif source == "shots":
-                        mc.plot_shotmap(pitch, ax, mc_shots[(mc_shots.match_id == mid) & (mc_shots.player_id == pid)])
-                    else:
-                        mc.plot_events(pitch, ax, mevents[mevents.player_id == pid], kinds, show_legend=False)
-                    st.pyplot(fig)
-                    plt.close(fig)
-                    if pick_map == "Passes":
-                        fig, ax = plt.subplots(figsize=(4.2, 1.5))
-                        mc.plot_pass_thirds(ax, mevents[mevents.player_id == pid])
-                        plt.tight_layout()
-                        st.pyplot(fig)
-                        plt.close(fig)
-
-            st.markdown("##### Rating breakdown")
-            rcols = st.columns(len(picked))
-            for col, lab in zip(rcols, picked):
-                prow = mp[mp.label == lab].iloc[0]
-                with col:
-                    st.caption(f"**{prow.player_name}** — rating {prow.rating:.1f}")
-                    fig, ax = plt.subplots(figsize=(3.6, 2.2))
-                    mc.plot_rating_breakdown(ax, prow)
-                    plt.tight_layout()
-                    st.pyplot(fig)
-                    plt.close(fig)
-
-            st.markdown("##### Key numbers")
-            picked_rows = mp[mp.label.isin(picked)].set_index("label").loc[picked].reset_index()
-            colors = [mc.BLUE, mc.RED, mc.GREEN, mc.PURPLE][:len(picked_rows)]
-            usable_stats = [(k, lab) for k, lab, fmt in KEY_STATS_S if k in picked_rows.columns and not picked_rows[k].isna().all()]
-            ncols2 = 2
-            nrows2 = -(-len(usable_stats) // ncols2)
-            fig, axes = plt.subplots(nrows2, ncols2, figsize=(9, (0.5 + 0.4 * len(picked_rows)) * nrows2))
-            for ax, (k, lab) in zip(np.array(axes).flat, usable_stats):
-                rows = [(_short(r.player_name), getattr(r, k)) for r in picked_rows.itertuples()]
-                mc.plot_stat_bars(ax, rows, lab, colors)
-            for ax in np.array(axes).flat[len(usable_stats):]:
-                ax.axis("off")
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close(fig)
