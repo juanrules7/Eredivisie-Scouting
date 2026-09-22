@@ -812,29 +812,53 @@ with tab11:
             mc_matches[["match_id", "date", "home", "away"]], on="match_id", how="left").sort_values("date")
 
         st.markdown("#### Season totals")
+        if pd.isna(prow.get("pctile_group")):
+            st.info(f"{prow.player_name} has played under 900 minutes this season, so percentiles below aren't "
+                    "shown (too small a sample to rank fairly) - raw per-90 numbers still are.")
+        else:
+            st.caption(f"Percentiles are within the same position ({prow.position}), minimum 900 minutes, in "
+                       f"{ev_league} {ev_season} - {int((season_players.pctile_group == prow.pctile_group).sum())} players.")
+
+        st.markdown("##### Radar profile")
+        st.caption("Every axis is the percentile already used below (per 90, possession-adjusted where it "
+                   "applies), so this is the same numbers as the metrics further down, just as one picture. "
+                   "The dashed ring at 50 is the median player of the comparison pool.")
+        if pd.isna(prow.get("pctile_group")):
+            st.info("Not enough minutes this season for a reliable radar.")
+        else:
+            fig = mc.plot_player_radar_grid([(prow.player_name, prow, mc.BLUE)])
+            st.pyplot(fig)
+            plt.close(fig)
+
+        st.markdown("##### Passing, duels & defending — per 90, possession-adjusted, percentile")
+        st.caption("Possession-adjusted the same way as the Wyscout scouting tabs: attacking actions x 50/possession, "
+                   "defensive actions x 50/(100-possession), using this club's 2025/26 average possession - so a "
+                   "player at a low-possession team isn't marked down just for touching the ball less.")
         stat_defs = [
             ("totalPass", "Passes"), ("accuratePass", "Accurate passes"), ("totalCross", "Crosses"),
-            ("keyPass", "Key passes"), ("expectedAssists", "xA"), ("totalTackle", "Tackles"),
-            ("interceptionWon", "Interceptions"), ("totalClearance", "Clearances"), ("ballRecovery", "Ball recoveries"),
-            ("totalContest", "Dribbles attempted"), ("wonContest", "Dribbles won"), ("ballCarriesCount", "Ball carries"),
-            ("duelWon", "Duels won"), ("aerialWon", "Aerial duels won"), ("totalShots", "Shots"), ("goals", "Goals"),
+            ("keyPass", "Key passes"), ("expectedAssists", "xA"), ("totalContest", "Dribbles attempted"),
+            ("wonContest", "Dribbles won"), ("totalTackle", "Tackles"), ("interceptionWon", "Interceptions"),
+            ("totalClearance", "Clearances"), ("ballRecovery", "Ball recoveries"), ("duelWon", "Duels won"),
+            ("aerialWon", "Aerial duels won"), ("totalShots", "Shots"), ("goals", "Goals"), ("fouls", "Fouls"),
         ]
         metric_cols = st.columns(4)
         for i, (k, lab) in enumerate(stat_defs):
-            if k in prow.index and pd.notna(prow[k]):
-                with metric_cols[i % 4]:
-                    p90 = prow.get(f"{k}_p90")
-                    st.metric(lab, f"{prow[k]:.0f}", help=f"{p90:.2f} per 90" if pd.notna(p90) else None)
+            adj_col = f"{k}_p90_adj"
+            if adj_col not in prow.index or pd.isna(prow[adj_col]):
+                continue
+            with metric_cols[i % 4]:
+                pct = prow.get(f"{adj_col}_pctile")
+                st.metric(f"{lab}/90 (PAdj)", f"{prow[adj_col]:.2f}",
+                          help=f"Raw: {prow[k]:.0f} total, {prow.get(f'{k}_p90', float('nan')):.2f}/90 unadjusted")
+                if pd.notna(pct):
+                    st.caption(f"{pct:.0f}th percentile")
 
         st.markdown("##### Physical: tracking (GPS) data")
-        st.caption("Same source as everything else on this tab - Sofascore's per-match player tracking, summed "
-                   "(distances) or maxed (top speed) across the season, then compared against every other player "
-                   f"of the same position ({prow.position}) in {ev_league} {ev_season}.")
+        st.caption("Not possession-adjusted - running happens whether or not your team has the ball.")
         phys_defs = [("kilometersCovered", "Km covered", "{:.1f}"), ("numberOfSprints", "Sprints", "{:.0f}"),
                     ("metersCoveredHighSpeedRunningKm", "High-speed running (km)", "{:.2f}"),
                     ("metersCoveredSprintingKm", "Sprint distance (km)", "{:.2f}"),
                     ("metersCoveredRunningKm", "Running distance (km)", "{:.2f}")]
-        peers = season_players[season_players.position == prow.position]
         pc = st.columns(5)
         for i, (k, lab, fmt) in enumerate(phys_defs):
             p90c = f"{k}_p90"
@@ -842,12 +866,16 @@ with tab11:
                 continue
             with pc[i]:
                 st.metric(lab + "/90", fmt.format(prow[p90c]))
-                if p90c in peers.columns and peers[p90c].notna().sum() > 2:
-                    pct = (peers[p90c] < prow[p90c]).mean() * 100
-                    st.caption(f"{pct:.0f}th percentile among {prow.position}s")
+                pct = prow.get(f"{p90c}_pctile")
+                if pd.notna(pct):
+                    st.caption(f"{pct:.0f}th percentile")
         if pd.notna(prow.get("top_speed_max")):
-            st.metric("Top speed this season", f"{prow.top_speed_max:.1f} km/h",
-                      help=f"Best single-match top speed out of {int(prow.games)} games")
+            with pc[4] if len(phys_defs) < 5 else st.container():
+                pct = prow.get("top_speed_max_pctile")
+                st.metric("Top speed this season", f"{prow.top_speed_max:.1f} km/h",
+                          help=f"Best single-match top speed out of {int(prow.games)} games")
+                if pd.notna(pct):
+                    st.caption(f"{pct:.0f}th percentile")
 
         st.markdown("##### Rating per match")
         if len(p_players_rows) and p_players_rows.rating.notna().any():
