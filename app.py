@@ -18,12 +18,13 @@ DATA_PATH = os.path.join(BASE_DIR, "data", "processed.parquet")
 TRANSFERS_PATH = os.path.join(BASE_DIR, "data", "transfer_report.parquet")
 MARKET_VALUES_PATH = os.path.join(BASE_DIR, "data", "market_values.json")
 
-LEAGUES = ["Eredivisie", "Eerste Divisie"]
+LEAGUES = ["Eredivisie", "Eerste Divisie", "Belgian Pro League"]
 SEASONS_BY_LEAGUE = {
     "Eredivisie": ["25/26", "24/25", "23/24", "22/23"],
     "Eerste Divisie": ["26/27", "25/26", "24/25", "23/24", "22/23", "21/22", "20/21"],
+    "Belgian Pro League": ["26/27", "25/26"],
 }
-PARTIAL_SEASONS = {("Eerste Divisie", "26/27")}   # still being played: minutes bar scaled to games played
+PARTIAL_SEASONS = {("Eerste Divisie", "26/27"), ("Belgian Pro League", "26/27")}   # still being played: minutes bar scaled to games played
 DEFAULT_SEASON = "25/26"                          # latest complete season
 
 
@@ -68,8 +69,8 @@ def season_df(temporada: str) -> pd.DataFrame:
 
 # --- App Header ---
 st.title("⚽ Dutch Football Scouting Platform")
-st.caption("Wyscout data · Eredivisie 2022/23 – 2025/26 · Eerste Divisie 2020/21 – 2026/27 · minimum 900 minutes played "
-           "(scaled to games played for the season in progress)")
+st.caption("Wyscout data · Eredivisie 2022/23 – 2025/26 · Eerste Divisie 2020/21 – 2026/27 · Belgian Pro League 2025/26 – 2026/27 "
+           "· minimum 900 minutes played (scaled to games played for the season in progress)")
 st.markdown("---")
 
 # --- METHODOLOGY SECTION ---
@@ -79,14 +80,14 @@ with st.expander("📖 READ FIRST: Methodology, Calibration & PAdj Logic", expan
     Rankings are computed as **pure within-league, within-season percentiles**. Each player is ranked
     against their positional peers in the same league and season, ensuring that the scores reflect genuine
     performance relative to the competition they actually faced that year. A 90 in the Eerste Divisie is
-    a 90 among Eerste Divisie players, **not** equivalent to a 90 in the Eredivisie.
+    a 90 among Eerste Divisie players, **not** equivalent to a 90 in the Eredivisie or the Belgian Pro League.
     """)
     st.markdown("### ⚖️ Possession Adjustment (PAdj)")
     st.write("""
     To ensure this analysis reflects true technical quality rather than team style, all data has been
     **Possession-Adjusted (PAdj)**, using each team's average possession % for that league and season
-    (FotMob for the Eredivisie, Sofascore for the Eerste Divisie; where both were checked they agree to
-    within 0.1 points).
+    (FotMob for the Eredivisie, Sofascore for the Eerste Divisie and the Belgian Pro League; where both
+    were checked they agree to within 0.1 points).
     Standard 'Per 90' metrics are often misleading because they fail to account for the 'opportunity' a
     player has to act — a defender on a team with 70% possession has far fewer chances to make tackles
     than one on a team with 30%. By adjusting for possession, we normalize the environment, allowing us
@@ -97,9 +98,14 @@ with st.expander("📖 READ FIRST: Methodology, Calibration & PAdj Logic", expan
     Beyond volume, these PAdj metrics are combined with **success rates** to generate comprehensive
     percentiles, so a high ranking reflects **efficiency**, not just activity. Only players with **900+
     minutes played** in a given season are included, so small samples don't distort the scale.
-    The Eerste Divisie 2026/27 season is still being played, so there the bar is scaled to the games each
-    team has played (900 minutes over 38 games = 23.7 minutes per game): the same share of the season,
-    but far fewer minutes, so percentiles there are noisier and will move as the season goes on.
+    The Eerste Divisie 2026/27 and Belgian Pro League 2026/27 seasons are still being played, so there the
+    bar is scaled to the games each team has played so far (900 minutes over a full season's games = X
+    minutes per game played, where a full season is 38 games for the Eerste Divisie and 34 for the Belgian
+    Pro League): the same share of the season, but far fewer minutes, so percentiles there are noisier and
+    will move as the season goes on.
+    The Belgian Pro League expanded from 16 to 18 teams for 2026/27 (Dender relegated, Kortrijk/Lommel
+    SK/SK Beveren promoted) - both team lists are handled automatically since possession is looked up per
+    club per season.
     The Eerste Divisie includes the four reserve sides (shown as Ajax II, PSV II, AZ II, Utrecht II)
     because they play in that league and its possession figures are available.
     """)

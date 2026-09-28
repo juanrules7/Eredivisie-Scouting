@@ -14,10 +14,12 @@ import pandas as pd
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 RAW_DIR = os.path.join(BASE_DIR, "data", "raw")
-# Eredivisie possession: FotMob. Eerste Divisie possession: Sofascore (build_possession_eerste_divisie.py).
+# Eredivisie possession: FotMob. Eerste Divisie / Belgian Pro League possession: Sofascore
+# (build_possession_eerste_divisie.py / build_possession_belgium.py).
 POSSESSION_PATHS = {
     "Eredivisie": os.path.join(BASE_DIR, "data", "fotmob_possession.json"),
     "Eerste Divisie": os.path.join(BASE_DIR, "data", "sofascore_possession_eerste_divisie.json"),
+    "Belgian Pro League": os.path.join(BASE_DIR, "data", "sofascore_possession_belgium.json"),
 }
 OUTPUT_PATH = os.path.join(BASE_DIR, "data", "processed.parquet")
 
@@ -47,11 +49,21 @@ FILES = [
     ("EERSTE ATT 2122.xlsx", "21/22", "Eerste Divisie"),
     ("EERSTE DEF_MID_GK 2021.xlsx", "20/21", "Eerste Divisie"),
     ("EERSTE ATT 2021.xlsx", "20/21", "Eerste Divisie"),
+    ("BELGIUM DEF_MID_GK 2627.xlsx", "26/27", "Belgian Pro League"),
+    ("BELGIUM ATT 2627.xlsx", "26/27", "Belgian Pro League"),
+    ("BELGIUM DEF_MID_GK 2526.xlsx", "25/26", "Belgian Pro League"),
+    ("BELGIUM ATT 2526.xlsx", "25/26", "Belgian Pro League"),
 ]
 
 # Seasons still being played: the 900-minute bar is scaled to the games each team has played so far
-# (900 minutes over a 38-game season = 900/38 minutes per game played).
-PARTIAL_SEASONS = {("Eerste Divisie", "26/27"): 38}   # (league, season) -> season length in games
+# (900 minutes over a season_len-game season = 900/season_len minutes per game played).
+PARTIAL_SEASONS = {
+    ("Eerste Divisie", "26/27"): 38,
+    # Belgian Pro League expanded 16 -> 18 teams for 26/27 (Dender relegated, Kortrijk/Lommel SK/SK
+    # Beveren promoted); Sofascore's own round schedule shows 34 regular-season rounds for 18 teams
+    # (double round-robin) before playoffs, which aren't scheduled yet - use that as the denominator.
+    ("Belgian Pro League", "26/27"): 34,
+}   # (league, season) -> season length in games
 
 # "25/26" -> "2526"
 def season_key(temporada):
